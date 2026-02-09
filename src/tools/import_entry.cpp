@@ -1,8 +1,7 @@
 #include "tools/tools.hpp"
 #include <nalt.hpp>
 
-struct import_info_t
-{
+struct import_info_t {
     qstring name;
     qvector<uval_t> ordinals;
     int mod_index;
@@ -12,7 +11,6 @@ extern "C" bool get_import_entry(import_info_t *out, size_t idx);
 
 namespace ida_mcp::tools::import_entry {
     namespace {
-
         json handle_get_import_entry(const json &params) {
             if (!params.contains("index")) {
                 return json{{"error", "Missing required parameter: index"}};
@@ -97,47 +95,53 @@ namespace ida_mcp::tools::import_entry {
                 {"note", "PE-only API (IDA 9.3+)"}
             };
         }
-
     } // anonymous namespace
 
-    void register_tools(mcp::McpServer &server) {
-        {
+    void register_tools(mcp::McpServer &server) { {
             mcp::ToolDefinition def;
             def.name = "get_import_entry";
             def.description = "Get a single import entry by index (PE-only, IDA 9.3+). "
-                              "Returns import name, ordinals, and module info.";
+                    "Returns import name, ordinals, and module info.";
             def.input_schema = json{
                 {"type", "object"},
-                {"properties", {
-                    {"index", {
-                        {"type", "number"},
-                        {"description", "Import entry index"}
-                    }}
-                }},
+                {
+                    "properties", {
+                        {
+                            "index", {
+                                {"type", "number"},
+                                {"description", "Import entry index"}
+                            }
+                        }
+                    }
+                },
                 {"required", json::array({"index"})}
             };
             server.register_tool(def, handle_get_import_entry);
-        }
-
-        {
+        } {
             mcp::ToolDefinition def;
             def.name = "get_import_entries";
             def.description = "Get a range of import entries (PE-only, IDA 9.3+). "
-                              "Enumerates import entries starting from a given index.";
+                    "Enumerates import entries starting from a given index.";
             def.input_schema = json{
                 {"type", "object"},
-                {"properties", {
-                    {"start", {
-                        {"type", "number"},
-                        {"description", "Starting index (default: 0)"},
-                        {"default", 0}
-                    }},
-                    {"count", {
-                        {"type", "number"},
-                        {"description", "Max entries to return (default: 100, max: 10000)"},
-                        {"default", 100}
-                    }}
-                }}
+                {
+                    "properties", {
+                        {
+                            "start", {
+                                {"type", "number"},
+                                {"description", "Starting index (default: 0)"},
+                                {"default", 0}
+                            }
+                        },
+                        {
+                            "count", {
+                                {"type", "number"},
+                                {"description", "Max entries to return (default: 100, max: 10000)"},
+                                {"default", 100}
+                            }
+                        }
+                    }
+                }
             };
             server.register_tool(def, handle_get_import_entries_range);
         }

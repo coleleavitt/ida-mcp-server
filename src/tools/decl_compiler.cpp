@@ -128,65 +128,66 @@ namespace ida_mcp::tools::decl_compiler {
         }
     }
 
-    void register_tools(mcp::McpServer &server) {
-        {
+    void register_tools(mcp::McpServer &server) { {
             mcp::ToolDefinition def;
             def.name = "parse_c_declaration";
             def.description = "Parse a C type declaration and return type information. "
-                "Examples: 'int *foo', 'struct { int x; int y; }', 'void (*callback)(int, char*)'";
+                    "Examples: 'int *foo', 'struct { int x; int y; }', 'void (*callback)(int, char*)'";
             def.input_schema = json{
                 {"type", "object"},
-                {"properties", {
-                    {"declaration", {{"type", "string"}, {"description", "C declaration string"}}},
-                    {"silent", {{"type", "boolean"}, {"description", "Suppress error messages (default true)"}}}
-                }},
+                {
+                    "properties", {
+                        {"declaration", {{"type", "string"}, {"description", "C declaration string"}}},
+                        {"silent", {{"type", "boolean"}, {"description", "Suppress error messages (default true)"}}}
+                    }
+                },
                 {"required", json::array({"declaration"})}
             };
             server.register_tool(def, parse_decl_impl);
-        }
-
-        {
+        } {
             mcp::ToolDefinition def;
             def.name = "parse_c_declarations";
             def.description = "Parse multiple C declarations and store them in the type library. "
-                "Input can be a C header-style string with structs, typedefs, enums, etc.";
+                    "Input can be a C header-style string with structs, typedefs, enums, etc.";
             def.input_schema = json{
                 {"type", "object"},
-                {"properties", {
-                    {"declarations", {{"type", "string"}, {"description", "C declarations (header-style)"}}},
-                    {"pack_alignment", {{"type", "integer"}, {"description", "Pack alignment (optional)"}}}
-                }},
+                {
+                    "properties", {
+                        {"declarations", {{"type", "string"}, {"description", "C declarations (header-style)"}}},
+                        {"pack_alignment", {{"type", "integer"}, {"description", "Pack alignment (optional)"}}}
+                    }
+                },
                 {"required", json::array({"declarations"})}
             };
             server.register_tool(def, parse_decls_impl);
-        }
-
-        {
+        } {
             mcp::ToolDefinition def;
             def.name = "apply_type_at_address";
             def.description = "Parse a C declaration and apply the resulting type to an address. "
-                "Useful for setting function prototypes or variable types.";
+                    "Useful for setting function prototypes or variable types.";
             def.input_schema = json{
                 {"type", "object"},
-                {"properties", {
-                    {"address", {{"type", "string"}, {"description", "Hex address"}}},
-                    {"declaration", {{"type", "string"}, {"description", "C declaration string"}}}
-                }},
+                {
+                    "properties", {
+                        {"address", {{"type", "string"}, {"description", "Hex address"}}},
+                        {"declaration", {{"type", "string"}, {"description", "C declaration string"}}}
+                    }
+                },
                 {"required", json::array({"address", "declaration"})}
             };
             server.register_tool(def, apply_type_at_address_impl);
-        }
-
-        {
+        } {
             mcp::ToolDefinition def;
             def.name = "get_type_at_address";
             def.description = "Get the C type declaration string for the type at an address";
             def.input_schema = json{
                 {"type", "object"},
-                {"properties", {
-                    {"address", {{"type", "string"}, {"description", "Hex address"}}},
-                    {"multiline", {{"type", "boolean"}, {"description", "Multi-line output (default false)"}}}
-                }},
+                {
+                    "properties", {
+                        {"address", {{"type", "string"}, {"description", "Hex address"}}},
+                        {"multiline", {{"type", "boolean"}, {"description", "Multi-line output (default false)"}}}
+                    }
+                },
                 {"required", json::array({"address"})}
             };
             server.register_tool(def, get_type_at_address_impl);

@@ -12,10 +12,10 @@
 namespace ida_mcp::tools::hexrays {
     namespace {
         // Sanitize filename - remove characters that are invalid in filenames
-        std::string sanitize_filename(const std::string& name) {
+        std::string sanitize_filename(const std::string &name) {
             std::string result;
             result.reserve(name.size());
-            for (char c : name) {
+            for (char c: name) {
                 if (std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '-' || c == '.') {
                     result += c;
                 } else {
@@ -290,7 +290,7 @@ namespace ida_mcp::tools::hexrays {
             mcp::ToolDefinition def;
             def.name = "export_all_decompiled";
             def.description = "Export all decompiled functions to individual .c files in a directory. "
-                              "Each file contains the pseudocode with a header showing function name, address, and signature.";
+                    "Each file contains the pseudocode with a header showing function name, address, and signature.";
             def.input_schema = json{
                 {"type", "object"},
                 {
@@ -298,13 +298,19 @@ namespace ida_mcp::tools::hexrays {
                         {
                             "output_dir", {
                                 {"type", "string"},
-                                {"description", "Output directory path. Defaults to current working directory if not specified."}
+                                {
+                                    "description",
+                                    "Output directory path. Defaults to current working directory if not specified."
+                                }
                             }
                         },
                         {
                             "name_filter", {
                                 {"type", "string"},
-                                {"description", "Optional regex pattern to filter functions by name. Only functions matching this pattern will be exported."}
+                                {
+                                    "description",
+                                    "Optional regex pattern to filter functions by name. Only functions matching this pattern will be exported."
+                                }
                             }
                         },
                         {

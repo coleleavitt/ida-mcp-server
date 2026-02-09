@@ -194,7 +194,7 @@ namespace ida_mcp::tools::types {
 
             // Iterate through all ordinals
             uint32 ord_limit = get_ordinal_limit(ti);
-            for (uint32 ord = 1; ord < ord_limit && enums.size() < (size_t)limit; ord++) {
+            for (uint32 ord = 1; ord < ord_limit && enums.size() < (size_t) limit; ord++) {
                 tinfo_t tif;
                 if (tif.get_numbered_type(ti, ord)) {
                     if (tif.is_enum()) {
@@ -221,7 +221,7 @@ namespace ida_mcp::tools::types {
             return json{
                 {"enum_count", enums.size()},
                 {"enums", enums},
-                {"truncated", enums.size() >= (size_t)limit}
+                {"truncated", enums.size() >= (size_t) limit}
             };
         }
 
@@ -287,7 +287,7 @@ namespace ida_mcp::tools::types {
             json structs = json::array();
 
             uint32 ord_limit = get_ordinal_limit(ti);
-            for (uint32 ord = 1; ord < ord_limit && structs.size() < (size_t)limit; ord++) {
+            for (uint32 ord = 1; ord < ord_limit && structs.size() < (size_t) limit; ord++) {
                 tinfo_t tif;
                 if (tif.get_numbered_type(ti, ord)) {
                     if (tif.is_udt()) {
@@ -313,7 +313,7 @@ namespace ida_mcp::tools::types {
             return json{
                 {"struct_count", structs.size()},
                 {"structs", structs},
-                {"truncated", structs.size() >= (size_t)limit}
+                {"truncated", structs.size() >= (size_t) limit}
             };
         }
 
@@ -433,6 +433,7 @@ namespace ida_mcp::tools::types {
                 {"base", atd.base}
             };
         }
+
         // Describe a type library ordinal (IDA 9.3+)
         // Signature from decompiled libida.so @ 0x55f7b0:
         //   describe_tlc_ordinal(qstring *out, til_t *ti, uint32 ordinal,
@@ -544,7 +545,6 @@ namespace ida_mcp::tools::types {
                 {"entries", entries}
             };
         }
-
     } // anonymous namespace
 
     void register_tools(mcp::McpServer &server) {

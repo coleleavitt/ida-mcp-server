@@ -99,9 +99,13 @@ namespace ida_mcp::tools::indirect_branches {
                     if (func != nullptr) {
                         // Try to find the register value using reg_finder_t
                         reg_value_info_t reg_value;
-                        if (find_reg_value_info(&reg_value, ea, op.reg, 0)) {  // 0 = use default depth from config
+                        if (find_reg_value_info(&reg_value, ea, op.reg, 0)) {
+                            // 0 = use default depth from config
                             result["register_tracking"] = {
-                                {"state", reg_value.is_unknown() ? "unknown" : (reg_value.is_num() ? "resolved" : "spd")}
+                                {
+                                    "state",
+                                    reg_value.is_unknown() ? "unknown" : (reg_value.is_num() ? "resolved" : "spd")
+                                }
                             };
 
                             // If we resolved to a constant value, that's the target!

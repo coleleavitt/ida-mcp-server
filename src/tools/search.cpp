@@ -13,7 +13,7 @@ namespace ida_mcp::tools::search {
         }
 
         // Helper: Search for Objective-C selectors in __objc_methname section
-        json search_objc_selectors(const std::string& pattern, int limit) {
+        json search_objc_selectors(const std::string &pattern, int limit) {
             json results = json::array();
 
             // Try to find __objc_methname section (Objective-C method names)
@@ -23,13 +23,13 @@ namespace ida_mcp::tools::search {
             }
 
             if (seg == nullptr) {
-                return results;  // No Objective-C method names section
+                return results; // No Objective-C method names section
             }
 
             std::regex re(pattern, std::regex::icase);
             ea_t ea = seg->start_ea;
 
-            while (ea < seg->end_ea && results.size() < (size_t)limit) {
+            while (ea < seg->end_ea && results.size() < (size_t) limit) {
                 // Read string at this address
                 qstring str;
                 size_t len = get_max_strlit_length(ea, STRTYPE_C, ALOPT_IGNHEADS);
@@ -46,7 +46,7 @@ namespace ida_mcp::tools::search {
                             });
                         }
 
-                        ea += len + 1;  // Move past this string
+                        ea += len + 1; // Move past this string
                         continue;
                     }
                 }
@@ -58,7 +58,7 @@ namespace ida_mcp::tools::search {
         }
 
         // Helper: Search for Objective-C class names in __objc_classname section
-        json search_objc_classnames(const std::string& pattern, int limit) {
+        json search_objc_classnames(const std::string &pattern, int limit) {
             json results = json::array();
 
             // Try to find __objc_classname section
@@ -68,13 +68,13 @@ namespace ida_mcp::tools::search {
             }
 
             if (seg == nullptr) {
-                return results;  // No Objective-C class names section
+                return results; // No Objective-C class names section
             }
 
             std::regex re(pattern, std::regex::icase);
             ea_t ea = seg->start_ea;
 
-            while (ea < seg->end_ea && results.size() < (size_t)limit) {
+            while (ea < seg->end_ea && results.size() < (size_t) limit) {
                 // Read string at this address
                 qstring str;
                 size_t len = get_max_strlit_length(ea, STRTYPE_C, ALOPT_IGNHEADS);
@@ -91,7 +91,7 @@ namespace ida_mcp::tools::search {
                             });
                         }
 
-                        ea += len + 1;  // Move past this string
+                        ea += len + 1; // Move past this string
                         continue;
                     }
                 }
@@ -211,7 +211,7 @@ namespace ida_mcp::tools::search {
         };
 
         // For Mach-O binaries, also search Objective-C sections if pattern looks like a selector
-        if (is_macho_binary() && results.size() < (size_t)limit) {
+        if (is_macho_binary() && results.size() < (size_t) limit) {
             // Check if pattern might be an Objective-C selector (contains : or starts with common prefixes)
             bool looks_like_selector = pattern.find(':') != std::string::npos ||
                                        pattern.find("init") != std::string::npos ||
@@ -292,7 +292,7 @@ namespace ida_mcp::tools::search {
         while (results.size() < (size_t) limit && ea < end_ea) {
             // Use bin_search to find pattern
             ea = ::bin_search(ea, end_ea, pattern_bytes.data(), nullptr,
-                             pattern_bytes.size(), BIN_SEARCH_FORWARD);
+                              pattern_bytes.size(), BIN_SEARCH_FORWARD);
 
             if (ea == BADADDR) {
                 break;

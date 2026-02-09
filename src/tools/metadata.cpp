@@ -96,20 +96,19 @@ namespace ida_mcp::tools::metadata {
                 proc_str.find("arm") != std::string::npos ||
                 proc_str.find("AARCH64") != std::string::npos ||
                 proc_str.find("aarch64") != std::string::npos) {
-
                 json arm_info = json::object();
 
                 // Detect ARM64 vs ARM32
                 bool is_arm64 = inf_is_64bit() || proc_str.find("64") != std::string::npos ||
-                               proc_str.find("AARCH64") != std::string::npos;
+                                proc_str.find("AARCH64") != std::string::npos;
                 arm_info["is_arm64"] = is_arm64;
                 arm_info["is_arm32"] = !is_arm64;
 
                 if (is_arm64) {
                     // ARM64-specific features
-                    arm_info["supports_pac"] = true;  // ARM64E pointer authentication
-                    arm_info["supports_bti"] = true;  // Branch Target Identification
-                    arm_info["supports_mte"] = true;  // Memory Tagging Extension
+                    arm_info["supports_pac"] = true; // ARM64E pointer authentication
+                    arm_info["supports_bti"] = true; // Branch Target Identification
+                    arm_info["supports_mte"] = true; // Memory Tagging Extension
                     arm_info["supports_atomics"] = true; // LSE atomics
                     arm_info["architecture"] = "ARMv8-A or later";
                 } else {
@@ -170,7 +169,7 @@ namespace ida_mcp::tools::metadata {
                 }
 
                 macho_info["has_linkedit"] = has_linkedit;
-                macho_info["has_data_const"] = has_data_const;  // Indicates modern Mach-O
+                macho_info["has_data_const"] = has_data_const; // Indicates modern Mach-O
                 macho_info["has_objc_sections"] = has_objc;
                 macho_info["has_swift_sections"] = has_swift;
 

@@ -5,26 +5,26 @@
 namespace ida_mcp::tools::instructions {
     namespace {
         // ARM64 specific constants (from arm.hpp)
-        #define aux_pac        0x10000
-        #define PAC_KEYMASK    0x07
-        #define PAC_KEY_IA     0x00
-        #define PAC_KEY_IB     0x01
-        #define PAC_KEY_DA     0x02
-        #define PAC_KEY_DB     0x03
-        #define PAC_KEY_GA     0x04
-        #define PAC_ADRMASK   (3<<3)
-        #define PAC_ADR_GPR   (0<<3)
-        #define PAC_ADR_X17   (1<<3)
-        #define PAC_ADR_X30   (2<<3)
-        #define PAC_MODMASK   (3<<5)
-        #define PAC_MOD_GPR   (0<<5)
-        #define PAC_MOD_ZR    (1<<5)
-        #define PAC_MOD_X16   (2<<5)
-        #define PAC_MOD_SP    (3<<5)
+#define aux_pac        0x10000
+#define PAC_KEYMASK    0x07
+#define PAC_KEY_IA     0x00
+#define PAC_KEY_IB     0x01
+#define PAC_KEY_DA     0x02
+#define PAC_KEY_DB     0x03
+#define PAC_KEY_GA     0x04
+#define PAC_ADRMASK   (3<<3)
+#define PAC_ADR_GPR   (0<<3)
+#define PAC_ADR_X17   (1<<3)
+#define PAC_ADR_X30   (2<<3)
+#define PAC_MODMASK   (3<<5)
+#define PAC_MOD_GPR   (0<<5)
+#define PAC_MOD_ZR    (1<<5)
+#define PAC_MOD_X16   (2<<5)
+#define PAC_MOD_SP    (3<<5)
 
         // Helper: Check if instruction is ARM64 atomic operation
         bool is_atomic_operation(uint16 itype) {
-            return (itype >= ARM_ldar && itype <= ARM_stlxp) ||  // Load-Acquire/Store-Release
+            return (itype >= ARM_ldar && itype <= ARM_stlxp) || // Load-Acquire/Store-Release
                    (itype >= ARM_ldadd && itype <= ARM_ldaddal) ||
                    (itype >= ARM_ldclr && itype <= ARM_ldclral) ||
                    (itype >= ARM_ldeor && itype <= ARM_ldeoral) ||
@@ -46,12 +46,12 @@ namespace ida_mcp::tools::instructions {
 
         // Helper: Check if instruction is crypto
         bool is_crypto_instruction(uint16 itype) {
-            return (itype >= ARM_aesd && itype <= ARM_aesmc) ||     // AES
+            return (itype >= ARM_aesd && itype <= ARM_aesmc) || // AES
                    (itype >= ARM_sha1c && itype <= ARM_sha256su1) || // SHA-1/256
                    (itype >= ARM_sha512h && itype <= ARM_sha512su1) || // SHA-512
                    (itype >= ARM_sm3partw1 && itype <= ARM_sm3tt2b) || // SM3
-                   (itype >= ARM_sm4e && itype <= ARM_sm4ekey) ||      // SM4
-                   (itype == ARM_crc32 || itype == ARM_crc32c);        // CRC32
+                   (itype >= ARM_sm4e && itype <= ARM_sm4ekey) || // SM4
+                   (itype == ARM_crc32 || itype == ARM_crc32c); // CRC32
         }
 
         // Helper: Check if instruction is PAC/AUT
@@ -60,7 +60,7 @@ namespace ida_mcp::tools::instructions {
         }
 
         // Helper: Get PAC key name
-        const char* get_pac_key_name(int key) {
+        const char *get_pac_key_name(int key) {
             switch (key) {
                 case PAC_KEY_IA: return "IA";
                 case PAC_KEY_IB: return "IB";
@@ -72,7 +72,7 @@ namespace ida_mcp::tools::instructions {
         }
 
         // Helper: Get PAC address mode
-        const char* get_pac_address_mode(int adr) {
+        const char *get_pac_address_mode(int adr) {
             switch (adr) {
                 case PAC_ADR_GPR: return "gpr";
                 case PAC_ADR_X17: return "x17";
@@ -82,7 +82,7 @@ namespace ida_mcp::tools::instructions {
         }
 
         // Helper: Get PAC modifier mode
-        const char* get_pac_modifier_mode(int mod) {
+        const char *get_pac_modifier_mode(int mod) {
             switch (mod) {
                 case PAC_MOD_GPR: return "gpr_sp";
                 case PAC_MOD_ZR: return "zero";
@@ -164,7 +164,7 @@ namespace ida_mcp::tools::instructions {
 
             // Check for PAC instructions
             if (is_pac_instruction(insn)) {
-                int pac_flags = insn.insnpref;  // pac_flags is mapped to insnpref
+                int pac_flags = insn.insnpref; // pac_flags is mapped to insnpref
                 int key = pac_flags & PAC_KEYMASK;
                 int adr = pac_flags & PAC_ADRMASK;
                 int mod = pac_flags & PAC_MODMASK;

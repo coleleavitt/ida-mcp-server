@@ -13,22 +13,22 @@ namespace ida_mcp::tools::decompile_all {
     namespace {
         static json batch_decompile(const json &params) {
 #ifdef HAS_HEXRAYS
-            if ( !init_hexrays_plugin() )
+            if (!init_hexrays_plugin())
                 throw std::runtime_error("Hexrays decompiler not available");
 
             eavec_t funcaddrs;
             bool use_specific = false;
 
-            if ( params.contains("addresses") && params["addresses"].is_array() ) {
+            if (params.contains("addresses") && params["addresses"].is_array()) {
                 use_specific = true;
-                for ( const auto &addr_json : params["addresses"] ) {
-                    if ( !addr_json.is_string() )
+                for (const auto &addr_json: params["addresses"]) {
+                    if (!addr_json.is_string())
                         continue;
                     auto ea = parse_ea(addr_json.get<std::string>());
-                    if ( ea.has_value() )
+                    if (ea.has_value())
                         funcaddrs.push_back(ea.value());
                 }
-                if ( funcaddrs.empty() )
+                if (funcaddrs.empty())
                     throw std::runtime_error("No valid addresses provided");
             }
 
@@ -45,13 +45,13 @@ namespace ida_mcp::tools::decompile_all {
                 use_specific ? &funcaddrs : nullptr,
                 flags);
 
-            if ( !ok ) {
+            if (!ok) {
                 qunlink(tmp_path.c_str());
                 throw std::runtime_error("Batch decompilation failed or was cancelled");
             }
 
             std::ifstream infile(tmp_path.c_str());
-            if ( !infile.is_open() ) {
+            if (!infile.is_open()) {
                 qunlink(tmp_path.c_str());
                 throw std::runtime_error("Failed to read decompilation output");
             }
@@ -64,11 +64,11 @@ namespace ida_mcp::tools::decompile_all {
             std::string content = ss.str();
 
             size_t max_size = 4 * 1024 * 1024;
-            if ( params.contains("max_size") && params["max_size"].is_number_integer() )
+            if (params.contains("max_size") && params["max_size"].is_number_integer())
                 max_size = params["max_size"].get<size_t>();
 
             bool truncated = false;
-            if ( content.size() > max_size ) {
+            if (content.size() > max_size) {
                 content.resize(max_size);
                 truncated = true;
             }
@@ -77,7 +77,7 @@ namespace ida_mcp::tools::decompile_all {
             result["pseudocode"] = content;
             result["truncated"] = truncated;
             result["size_bytes"] = content.size();
-            if ( use_specific )
+            if (use_specific)
                 result["function_count"] = funcaddrs.size();
             else
                 result["function_count"] = get_func_qty();
@@ -93,21 +93,30 @@ namespace ida_mcp::tools::decompile_all {
         mcp::ToolDefinition def;
         def.name = "batch_decompile";
         def.description =
-            "Batch decompile all functions (or a specific list) and return the pseudocode as a single block. "
-            "Uses Hex-Rays decompile_many API. If no addresses given, decompiles all non-library functions.";
+                "Batch decompile all functions (or a specific list) and return the pseudocode as a single block. "
+                "Uses Hex-Rays decompile_many API. If no addresses given, decompiles all non-library functions.";
         def.input_schema = json{
             {"type", "object"},
-            {"properties", {
-                {"addresses", {
-                    {"type", "array"},
-                    {"items", {{"type", "string"}}},
-                    {"description", "Optional list of hex addresses to decompile. If omitted, decompiles all non-lib functions."}
-                }},
-                {"max_size", {
-                    {"type", "integer"},
-                    {"description", "Max output size in bytes (default 4MB). Output is truncated if exceeded."}
-                }}
-            }}
+            {
+                "properties", {
+                    {
+                        "addresses", {
+                            {"type", "array"},
+                            {"items", {{"type", "string"}}},
+                            {
+                                "description",
+                                "Optional list of hex addresses to decompile. If omitted, decompiles all non-lib functions."
+                            }
+                        }
+                    },
+                    {
+                        "max_size", {
+                            {"type", "integer"},
+                            {"description", "Max output size in bytes (default 4MB). Output is truncated if exceeded."}
+                        }
+                    }
+                }
+            }
         };
         server.register_tool(def, batch_decompile);
     }

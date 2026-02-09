@@ -15,22 +15,21 @@ using namespace ida_mcp;
 //--------------------------------------------------------------------------
 // Plugin state
 //--------------------------------------------------------------------------
-struct mcp_plugin_t : public plugmod_t
-{
+struct mcp_plugin_t : public plugmod_t {
     std::unique_ptr<mcp::McpServer> mcp_server;
     std::unique_ptr<ida_mcp::http::HttpServer> http_server;
     std::unique_ptr<std::thread> server_thread;
     bool server_running = false;
 
     virtual bool idaapi run(size_t arg) override;
+
     virtual ~mcp_plugin_t();
 };
 
 //--------------------------------------------------------------------------
 // Initialize plugin
 //--------------------------------------------------------------------------
-static plugmod_t *idaapi init()
-{
+static plugmod_t *idaapi init() {
     // Plugin can run in any processor mode
     return new mcp_plugin_t();
 }
@@ -38,14 +37,11 @@ static plugmod_t *idaapi init()
 //--------------------------------------------------------------------------
 // Plugin destructor - cleanup
 //--------------------------------------------------------------------------
-mcp_plugin_t::~mcp_plugin_t()
-{
-    if ( server_running && http_server )
-    {
+mcp_plugin_t::~mcp_plugin_t() {
+    if (server_running && http_server) {
         msg("MCP Server: Stopping HTTP server...\n");
         http_server->stop();
-        if ( server_thread && server_thread->joinable() )
-        {
+        if (server_thread && server_thread->joinable()) {
             server_thread->join();
         }
         server_running = false;
@@ -55,15 +51,12 @@ mcp_plugin_t::~mcp_plugin_t()
 //--------------------------------------------------------------------------
 // Run plugin
 //--------------------------------------------------------------------------
-bool idaapi mcp_plugin_t::run(size_t arg)
-{
-    if ( server_running )
-    {
+bool idaapi mcp_plugin_t::run(size_t arg) {
+    if (server_running) {
         // Server already running - stop it
         msg("MCP Server: Stopping...\n");
         http_server->stop();
-        if ( server_thread && server_thread->joinable() )
-        {
+        if (server_thread && server_thread->joinable()) {
             server_thread->join();
         }
         server_running = false;
@@ -72,8 +65,7 @@ bool idaapi mcp_plugin_t::run(size_t arg)
     }
 
     // Start server
-    try
-    {
+    try {
         // Get configuration from user or use defaults
         const char *bind_addr = "127.0.0.1";
         uint16_t port = 8080;
@@ -103,9 +95,7 @@ bool idaapi mcp_plugin_t::run(size_t arg)
         msg("MCP Server: Run plugin again to stop server\n");
 
         return true;
-    }
-    catch ( const std::exception& e )
-    {
+    } catch (const std::exception &e) {
         warning("MCP Server error: %s", e.what());
         server_running = false;
         return false;
@@ -117,23 +107,23 @@ bool idaapi mcp_plugin_t::run(size_t arg)
 //--------------------------------------------------------------------------
 static const char comment[] = "Model Context Protocol server for IDA Pro";
 static const char help[] =
-    "IDA MCP Server Plugin\n"
-    "\n"
-    "This plugin exposes IDA Pro's analysis capabilities via\n"
-    "the Model Context Protocol (MCP) over HTTP.\n"
-    "\n"
-    "Usage:\n"
-    "  1. Run the plugin to start the HTTP server\n"
-    "  2. Connect MCP clients to http://127.0.0.1:8080\n"
-    "  3. Run the plugin again to stop the server\n"
-    "\n"
-    "The server provides tools for:\n"
-    "  - Function analysis\n"
-    "  - Cross-references\n"
-    "  - String search\n"
-    "  - Disassembly\n"
-    "  - Hexrays decompilation (if available)\n"
-    "  - And much more...\n";
+        "IDA MCP Server Plugin\n"
+        "\n"
+        "This plugin exposes IDA Pro's analysis capabilities via\n"
+        "the Model Context Protocol (MCP) over HTTP.\n"
+        "\n"
+        "Usage:\n"
+        "  1. Run the plugin to start the HTTP server\n"
+        "  2. Connect MCP clients to http://127.0.0.1:8080\n"
+        "  3. Run the plugin again to stop the server\n"
+        "\n"
+        "The server provides tools for:\n"
+        "  - Function analysis\n"
+        "  - Cross-references\n"
+        "  - String search\n"
+        "  - Disassembly\n"
+        "  - Hexrays decompilation (if available)\n"
+        "  - And much more...\n";
 
 static const char wanted_name[] = "MCP Server";
 static const char wanted_hotkey[] = "Ctrl-Shift-M";
@@ -144,12 +134,12 @@ static const char wanted_hotkey[] = "Ctrl-Shift-M";
 plugin_t PLUGIN =
 {
     IDP_INTERFACE_VERSION,
-    PLUGIN_MULTI,         // Plugin can work with multiple idbs in parallel
-    init,                 // initialize
-    nullptr,              // terminate (can be nullptr)
-    nullptr,              // invoke plugin (can be nullptr, we use run() instead)
-    comment,              // long comment about the plugin
-    help,                 // multiline help about the plugin
-    wanted_name,          // the preferred short name of the plugin
-    wanted_hotkey         // the preferred hotkey to run the plugin
+    PLUGIN_MULTI, // Plugin can work with multiple idbs in parallel
+    init, // initialize
+    nullptr, // terminate (can be nullptr)
+    nullptr, // invoke plugin (can be nullptr, we use run() instead)
+    comment, // long comment about the plugin
+    help, // multiline help about the plugin
+    wanted_name, // the preferred short name of the plugin
+    wanted_hotkey // the preferred hotkey to run the plugin
 };

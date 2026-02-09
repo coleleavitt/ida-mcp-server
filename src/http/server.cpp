@@ -16,14 +16,14 @@ namespace ida_mcp::http {
     void HttpServer::reap_finished_sessions() {
         sessions_.erase(
             std::remove_if(sessions_.begin(), sessions_.end(),
-                [](const std::shared_ptr<SessionEntry> &entry) {
-                    if ( entry->finished.load() ) {
-                        if ( entry->thread.joinable() )
-                            entry->thread.join();
-                        return true;
-                    }
-                    return false;
-                }),
+                           [](const std::shared_ptr<SessionEntry> &entry) {
+                               if (entry->finished.load()) {
+                                   if (entry->thread.joinable())
+                                       entry->thread.join();
+                                   return true;
+                               }
+                               return false;
+                           }),
             sessions_.end());
     }
 
@@ -37,12 +37,12 @@ namespace ida_mcp::http {
 
             running_.store(true);
 
-            while ( running_.load() ) {
+            while (running_.load()) {
                 try {
                     tcp::socket socket{io_context_};
                     acceptor_->accept(socket);
 
-                    if ( !running_.load() )
+                    if (!running_.load())
                         break;
 
                     auto entry = std::make_shared<SessionEntry>();
@@ -50,24 +50,22 @@ namespace ida_mcp::http {
                     entry->thread = std::thread([this, s = std::move(socket), entry]() mutable {
                         handle_session(std::move(s));
                         entry->finished.store(true);
-                    });
-
-                    {
+                    }); {
                         std::lock_guard<std::mutex> lock(sessions_mutex_);
                         reap_finished_sessions();
                         sessions_.push_back(std::move(entry));
                     }
-                } catch ( const boost::system::system_error &e ) {
-                    if ( e.code() == boost::asio::error::operation_aborted ||
-                         e.code() == boost::asio::error::bad_descriptor ) {
+                } catch (const boost::system::system_error &e) {
+                    if (e.code() == boost::asio::error::operation_aborted ||
+                        e.code() == boost::asio::error::bad_descriptor) {
                         break;
                     }
-                    if ( !running_.load() )
+                    if (!running_.load())
                         break;
                     throw;
                 }
             }
-        } catch ( const std::exception &e ) {
+        } catch (const std::exception &e) {
             std::cerr << "HTTP server error: " << e.what() << std::endl;
             throw;
         }
@@ -75,17 +73,17 @@ namespace ida_mcp::http {
 
     void HttpServer::stop() {
         bool expected = true;
-        if ( !running_.compare_exchange_strong(expected, false) )
+        if (!running_.compare_exchange_strong(expected, false))
             return;
 
-        if ( acceptor_ ) {
+        if (acceptor_) {
             boost::system::error_code ec;
             acceptor_->close(ec);
         }
 
         std::lock_guard<std::mutex> lock(sessions_mutex_);
-        for ( auto &entry : sessions_ ) {
-            if ( entry->thread.joinable() )
+        for (auto &entry: sessions_) {
+            if (entry->thread.joinable())
                 entry->thread.join();
         }
         sessions_.clear();
@@ -102,7 +100,7 @@ namespace ida_mcp::http {
 
             boost::system::error_code ec;
             socket.shutdown(tcp::socket::shutdown_send, ec);
-        } catch ( const std::exception &e ) {
+        } catch (const std::exception &e) {
             std::cerr << "Session error: " << e.what() << std::endl;
         }
     }

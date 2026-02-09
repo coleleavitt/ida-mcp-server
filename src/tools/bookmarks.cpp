@@ -85,8 +85,7 @@ namespace ida_mcp::tools::bookmarks {
         }
     }
 
-    void register_tools(mcp::McpServer &server) {
-        {
+    void register_tools(mcp::McpServer &server) { {
             mcp::ToolDefinition def;
             def.name = "list_bookmarks";
             def.description = "List all bookmarks in the database";
@@ -96,33 +95,36 @@ namespace ida_mcp::tools::bookmarks {
                 {"required", json::array()}
             };
             server.register_tool(def, list_bookmarks_impl);
-        }
-
-        {
+        } {
             mcp::ToolDefinition def;
             def.name = "set_bookmark";
             def.description = "Create a bookmark at address";
             def.input_schema = json{
                 {"type", "object"},
-                {"properties", {
-                    {"address", {{"type", "string"}, {"description", "Hex address"}}},
-                    {"description", {{"type", "string"}, {"description", "Bookmark description"}}},
-                    {"index", {{"type", "integer"}, {"description", "Slot number (optional, auto-assigned if omitted)"}}}
-                }},
+                {
+                    "properties", {
+                        {"address", {{"type", "string"}, {"description", "Hex address"}}},
+                        {"description", {{"type", "string"}, {"description", "Bookmark description"}}},
+                        {
+                            "index",
+                            {{"type", "integer"}, {"description", "Slot number (optional, auto-assigned if omitted)"}}
+                        }
+                    }
+                },
                 {"required", json::array({"address"})}
             };
             server.register_tool(def, set_bookmark_impl);
-        }
-
-        {
+        } {
             mcp::ToolDefinition def;
             def.name = "delete_bookmark";
             def.description = "Delete a bookmark by index";
             def.input_schema = json{
                 {"type", "object"},
-                {"properties", {
-                    {"index", {{"type", "integer"}, {"description", "Bookmark index"}}}
-                }},
+                {
+                    "properties", {
+                        {"index", {{"type", "integer"}, {"description", "Bookmark index"}}}
+                    }
+                },
                 {"required", json::array({"index"})}
             };
             server.register_tool(def, delete_bookmark_impl);

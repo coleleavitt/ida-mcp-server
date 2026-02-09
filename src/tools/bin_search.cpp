@@ -71,13 +71,21 @@ namespace ida_mcp::tools::bin_search {
             def.description = "Search for binary pattern with wildcards (e.g., '48 8B ?? ?? 90')";
             def.input_schema = json{
                 {"type", "object"},
-                {"properties", {
-                    {"pattern", {{"type", "string"}, {"description", "Binary pattern with ?? wildcards (e.g., '48 8B ?? ?? 90')"}}},
-                    {"start_address", {{"type", "string"}, {"description", "Hex start address"}}},
-                    {"end_address", {{"type", "string"}, {"description", "Hex end address"}}},
-                    {"radix", {{"type", "integer"}, {"description", "Number base (default: 16)"}}},
-                    {"limit", {{"type", "integer"}, {"description", "Max results (default: 100)"}}}
-                }},
+                {
+                    "properties", {
+                        {
+                            "pattern",
+                            {
+                                {"type", "string"},
+                                {"description", "Binary pattern with ?? wildcards (e.g., '48 8B ?? ?? 90')"}
+                            }
+                        },
+                        {"start_address", {{"type", "string"}, {"description", "Hex start address"}}},
+                        {"end_address", {{"type", "string"}, {"description", "Hex end address"}}},
+                        {"radix", {{"type", "integer"}, {"description", "Number base (default: 16)"}}},
+                        {"limit", {{"type", "integer"}, {"description", "Max results (default: 100)"}}}
+                    }
+                },
                 {"required", json::array({"pattern"})}
             };
             server.register_tool(def, search_binary_pattern_impl);
