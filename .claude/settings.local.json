@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__ida-pro__get_database_info",
+      "Bash(find:*)",
+      "Bash(wc:*)",
+      "Bash(ls:*)",
+      "Bash(for f in /home/cole/CLionProjects/ida-pro/src/tools/{offsets,symbols,problems,hexrays,switches,indirect_branches,function_context,control_flow,debugger,exec_scripts,tools}.cpp)",
+      "Bash(done)",
+      "Bash(for f in /home/cole/CLionProjects/ida-pro/src/tools/{debugger,exec_scripts,tools}.cpp)",
+      "Bash(cmake --build:*)",
+      "Bash(awk:*)",
+      "Bash(xargs:*)",
+      "Bash(cmake --install:*)",
+      "mcp__ida-pro__get_binary_metadata",
+      "mcp__ida-pro__list_segments",
+      "mcp__ida-pro__get_address_info",
+      "mcp__ida-pro__search_objc",
+      "mcp__ida-pro__search_function_names",
+      "mcp__ida-pro__get_function_context",
+      "mcp__ida-pro__list_strings",
+      "mcp__ida-pro__list_imports"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

@@ -1,0 +1,14 @@
+build/
+cmake-build-debug/
+cmake-build-release/
+.cmake/
+CMakeCache.txt
+CMakeFiles/
+*.so
+*.dylib
+*.o
+*.a
+logs/
+.idea/
+.vscode/
+compile_commands.json
