@@ -61,5 +61,9 @@ namespace ida_mcp::tools {
 
         wide_values::register_tools(server);
         metadata_backup::register_tools(server);
+
+        decompile_all::register_tools(server);
+        microcode::register_tools(server);
+        dirtree_tools::register_tools(server);
     }
 } // namespace ida_mcp::tools

@@ -178,4 +178,16 @@ namespace metadata_backup {
     void register_tools(mcp::McpServer& server);
 }
 
+namespace decompile_all {
+    void register_tools(mcp::McpServer& server);
+}
+
+namespace microcode {
+    void register_tools(mcp::McpServer& server);
+}
+
+namespace dirtree_tools {
+    void register_tools(mcp::McpServer& server);
+}
+
 } // namespace ida_mcp::tools

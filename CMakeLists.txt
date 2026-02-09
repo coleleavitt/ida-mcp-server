@@ -86,6 +86,9 @@ set(TOOLS_SOURCES
         src/tools/snippets.cpp
         src/tools/wide_values.cpp
         src/tools/metadata_backup.cpp
+        src/tools/decompile_all.cpp
+        src/tools/microcode.cpp
+        src/tools/dirtree_tools.cpp
 )
 
 # Plugin shared library
