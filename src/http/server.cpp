@@ -1,16 +1,30 @@
 #include "http/server.hpp"
 #include <iostream>
+#include <chrono>
 
 namespace ida_mcp::http {
     HttpServer::HttpServer(const std::string &address, uint16_t port, mcp::McpServer &mcp_server)
         : address_(address)
           , port_(port)
-          , mcp_server_(mcp_server)
-          , running_(false) {
+          , mcp_server_(mcp_server) {
     }
 
     HttpServer::~HttpServer() {
         stop();
+    }
+
+    void HttpServer::reap_finished_sessions() {
+        sessions_.erase(
+            std::remove_if(sessions_.begin(), sessions_.end(),
+                [](const std::shared_ptr<SessionEntry> &entry) {
+                    if ( entry->finished.load() ) {
+                        if ( entry->thread.joinable() )
+                            entry->thread.join();
+                        return true;
+                    }
+                    return false;
+                }),
+            sessions_.end());
     }
 
     void HttpServer::run() {
@@ -21,59 +35,74 @@ namespace ida_mcp::http {
                 tcp::endpoint{address, port_}
             );
 
-            running_ = true;
+            running_.store(true);
 
-            // Accept loop - keep accepting connections while running
-            while (running_) {
+            while ( running_.load() ) {
                 try {
                     tcp::socket socket{io_context_};
-
-                    // Wait for connection
                     acceptor_->accept(socket);
 
-                    // Handle in new thread
-                    std::thread([this, socket = std::move(socket)]() mutable {
-                        handle_session(std::move(socket));
-                    }).detach();
-                } catch (const boost::system::system_error &e) {
-                    // Acceptor closed (stop() called)
-                    if (e.code() == boost::asio::error::operation_aborted ||
-                        e.code() == boost::asio::error::bad_descriptor) {
+                    if ( !running_.load() )
+                        break;
+
+                    auto entry = std::make_shared<SessionEntry>();
+
+                    entry->thread = std::thread([this, s = std::move(socket), entry]() mutable {
+                        handle_session(std::move(s));
+                        entry->finished.store(true);
+                    });
+
+                    {
+                        std::lock_guard<std::mutex> lock(sessions_mutex_);
+                        reap_finished_sessions();
+                        sessions_.push_back(std::move(entry));
+                    }
+                } catch ( const boost::system::system_error &e ) {
+                    if ( e.code() == boost::asio::error::operation_aborted ||
+                         e.code() == boost::asio::error::bad_descriptor ) {
                         break;
                     }
+                    if ( !running_.load() )
+                        break;
                     throw;
                 }
             }
-        } catch (const std::exception &e) {
+        } catch ( const std::exception &e ) {
             std::cerr << "HTTP server error: " << e.what() << std::endl;
             throw;
         }
     }
 
     void HttpServer::stop() {
-        running_ = false;
-        if (acceptor_) {
-            acceptor_->close();
+        bool expected = true;
+        if ( !running_.compare_exchange_strong(expected, false) )
+            return;
+
+        if ( acceptor_ ) {
+            boost::system::error_code ec;
+            acceptor_->close(ec);
         }
+
+        std::lock_guard<std::mutex> lock(sessions_mutex_);
+        for ( auto &entry : sessions_ ) {
+            if ( entry->thread.joinable() )
+                entry->thread.join();
+        }
+        sessions_.clear();
     }
 
-    void HttpServer::handle_session(tcp::socket socket) const {
+    void HttpServer::handle_session(tcp::socket socket) {
         try {
             beast::flat_buffer buffer;
-
-            // Read HTTP request
             beast::http::request<beast::http::string_body> req;
             beast::http::read(socket, buffer, req);
 
-            // Handle request
             auto response = handle_request(std::move(req));
-
-            // Send response
             beast::http::write(socket, response);
 
-            // Graceful shutdown
-            socket.shutdown(tcp::socket::shutdown_send);
-        } catch (const std::exception &e) {
+            boost::system::error_code ec;
+            socket.shutdown(tcp::socket::shutdown_send, ec);
+        } catch ( const std::exception &e ) {
             std::cerr << "Session error: " << e.what() << std::endl;
         }
     }
