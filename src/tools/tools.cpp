@@ -65,5 +65,7 @@ namespace ida_mcp::tools {
         decompile_all::register_tools(server);
         microcode::register_tools(server);
         dirtree_tools::register_tools(server);
+
+        import_entry::register_tools(server);
     }
 } // namespace ida_mcp::tools

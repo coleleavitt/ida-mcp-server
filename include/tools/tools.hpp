@@ -190,4 +190,8 @@ namespace dirtree_tools {
     void register_tools(mcp::McpServer& server);
 }
 
+namespace import_entry {
+    void register_tools(mcp::McpServer& server);
+}
+
 } // namespace ida_mcp::tools

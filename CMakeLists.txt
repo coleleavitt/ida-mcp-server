@@ -89,6 +89,7 @@ set(TOOLS_SOURCES
         src/tools/decompile_all.cpp
         src/tools/microcode.cpp
         src/tools/dirtree_tools.cpp
+        src/tools/import_entry.cpp
 )
 
 # Plugin shared library
