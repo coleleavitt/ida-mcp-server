@@ -52,7 +52,7 @@ namespace ida_mcp::tools::functions {
             return nullptr;
         }
 
-        const size_t FUNCTIONS_PAGE_SIZE = 1000;
+        const size_t FUNCTIONS_PAGE_SIZE = 100;  // Reduced from 1000 to prevent UI freeze
 
         // List functions with cursor-based pagination
         static json list_functions(const json &params) {

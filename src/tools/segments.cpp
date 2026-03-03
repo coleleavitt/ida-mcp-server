@@ -133,7 +133,7 @@ namespace ida_mcp::tools::segments {
             }
 
             segs.push_back(seg_info);
-            seg = get_next_seg(end);
+            seg = get_next_seg(seg->start_ea);  // Must use start_ea, not end_ea!
         }
 
         json result = json{

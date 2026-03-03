@@ -99,6 +99,8 @@ private:
     std::set<json> cancelled_requests_;
 
     mutable std::mutex mutex_;
+    // Tool execution mutex - prevents thread pile-up on execute_sync
+    mutable std::mutex tool_execution_mutex_;
 
     // Server capabilities
     json capabilities_;

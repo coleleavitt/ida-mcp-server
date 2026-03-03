@@ -147,6 +147,15 @@ namespace ida_mcp::mcp {
             handler = it->second.handler;
         }
 
+        // CRITICAL: Prevent thread pile-up on execute_sync()
+        // Only allow one tool call to wait on the IDA main thread at a time.
+        // Other concurrent requests immediately get a "server busy" error.
+        std::unique_lock<std::mutex> exec_lock(tool_execution_mutex_, std::try_to_lock);
+        if (!exec_lock.owns_lock()) {
+            throw std::runtime_error(
+                "Server busy: another tool call is in progress. Please retry shortly.");
+        }
+
         // Call tool handler on IDA's main thread (required for thread safety)
         json tool_result = ida_mcp::execute_on_main_thread([&]() {
             return handler(tool_params);
