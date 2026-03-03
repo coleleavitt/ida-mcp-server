@@ -118,7 +118,26 @@ namespace ida_mcp::http {
             return res;
         };
 
-        // Only accept POST requests to /mcp
+        auto make_empty_response = [&req](beast::http::status status) {
+            beast::http::response<beast::http::string_body> res{status, req.version()};
+            res.set(beast::http::field::server, "IDA-MCP-Server/1.0");
+            res.set(beast::http::field::access_control_allow_origin, "*");
+            res.keep_alive(req.keep_alive());
+            res.prepare_payload();
+            return res;
+        };
+
+        // StreamableHTTP: GET requests are used for SSE streams — return 405 to signal
+        // that this server does not offer a standalone SSE stream (clients handle this gracefully)
+        if (req.method() == beast::http::verb::get) {
+            return make_empty_response(beast::http::status::method_not_allowed);
+        }
+
+        // StreamableHTTP: DELETE requests are used for session termination
+        if (req.method() == beast::http::verb::delete_) {
+            return make_empty_response(beast::http::status::method_not_allowed);
+        }
+
         if (req.method() != beast::http::verb::post) {
             return make_response(beast::http::status::method_not_allowed,
                                  R"({"error":"Only POST requests are supported"})");
@@ -129,7 +148,6 @@ namespace ida_mcp::http {
                                  R"({"error":"Not found"})");
         }
 
-        // Parse JSON-RPC request
         try {
             json request_json = json::parse(req.body());
             auto mcp_request = mcp::McpRequest::from_json(request_json);
@@ -139,10 +157,13 @@ namespace ida_mcp::http {
                                      R"({"error":"Invalid JSON-RPC request"})");
             }
 
-            // Handle MCP request
             mcp::McpResponse mcp_response = mcp_server_.handle_request(mcp_request.value());
 
-            // Return JSON-RPC response
+            // MCP notifications (no id) get 202 Accepted with no body per StreamableHTTP spec
+            if (mcp_response.is_notification) {
+                return make_empty_response(beast::http::status::accepted);
+            }
+
             return make_response(beast::http::status::ok, mcp_response.to_json().dump());
         } catch (const json::parse_error &e) {
             return make_response(beast::http::status::bad_request,

@@ -30,15 +30,13 @@ namespace ida_mcp::mcp {
     }
 
     McpResponse McpServer::handle_request(const McpRequest &request) {
-        // Check if request has ID (responses only for requests with ID)
+        // Notifications have no id — acknowledge without a JSON-RPC response body
         if (!request.id.has_value()) {
-            return McpResponse::make_error(0, error_codes::INVALID_REQUEST,
-                                           "Request must have an id");
+            return McpResponse::notification_accepted();
         }
 
         int64_t request_id = request.id.value();
 
-        // Route to appropriate handler
         try {
             json result;
 

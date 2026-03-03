@@ -32,6 +32,7 @@ struct McpResponse {
     std::optional<int64_t> id;
     std::optional<json> result;
     std::optional<json> error_data;  // Renamed from 'error' to avoid IDA SDK macro conflict
+    bool is_notification = false;     // True when the request was a notification (no response needed)
 
     json to_json() const;
 
@@ -40,6 +41,13 @@ struct McpResponse {
         McpResponse resp;
         resp.id = id;
         resp.result = std::move(result);
+        return resp;
+    }
+
+    // Helper to create a notification acknowledgement (no JSON-RPC response body)
+    static McpResponse notification_accepted() {
+        McpResponse resp;
+        resp.is_notification = true;
         return resp;
     }
 
