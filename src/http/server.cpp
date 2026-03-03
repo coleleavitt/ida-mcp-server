@@ -114,11 +114,26 @@ namespace ida_mcp::http {
         if (!running_.compare_exchange_strong(expected, false))
             return;
 
-        if (acceptor_) {
-            boost::system::error_code ec;
+        // Close acceptor first
+        boost::system::error_code ec;
+        if (acceptor_ && acceptor_->is_open()) {
             acceptor_->close(ec);
         }
 
+        // Make a self-connection to wake up the blocking accept() call
+        // This is necessary because acceptor_->close() doesn't reliably
+        // interrupt a blocking accept() on all systems (especially Linux)
+        try {
+            tcp::socket wake_socket(io_context_);
+            wake_socket.connect(tcp::endpoint(
+                net::ip::make_address(address_), port_), ec);
+            // Connection will fail since acceptor is closed, but that's fine -
+            // the point is to unblock accept()
+        } catch (...) {
+            // Ignore errors - we just want to wake up the accept thread
+        }
+
+        // Join all session threads
         std::lock_guard<std::mutex> lock(sessions_mutex_);
         for (auto &entry: sessions_) {
             if (entry->thread.joinable())
