@@ -1,6 +1,7 @@
 #include "tools/tools.hpp"
 #include <ua.hpp>
 #include <allins.hpp>
+#include <memory>
 
 namespace ida_mcp::tools::instructions {
     namespace {
@@ -120,8 +121,11 @@ namespace ida_mcp::tools::instructions {
             }
             ea_t ea = ea_opt.value();
 
-            insn_t insn;
-            int len = decode_insn(&insn, ea);
+            // Use heap allocation to avoid stack corruption if insn_t size differs between SDK versions
+            auto insn_ptr = std::make_unique<insn_t>();
+            // insn_t default constructor handles initialization
+            int len = decode_insn(insn_ptr.get(), ea);
+            insn_t& insn = *insn_ptr;
 
             if (len <= 0) {
                 throw std::runtime_error("No instruction at " + format_ea(ea));
@@ -237,8 +241,9 @@ namespace ida_mcp::tools::instructions {
             }
 
             // Decode to get full disassembly
-            insn_t insn;
-            int len = decode_insn(&insn, ea);
+            auto insn_ptr = std::make_unique<insn_t>();
+            int len = decode_insn(insn_ptr.get(), ea);
+            insn_t& insn = *insn_ptr;
 
             if (len <= 0) {
                 throw std::runtime_error("Failed to decode instruction at " + format_ea(ea));
@@ -263,8 +268,9 @@ namespace ida_mcp::tools::instructions {
             }
             ea_t ea = ea_opt.value();
 
-            insn_t insn;
-            int len = decode_insn(&insn, ea);
+            auto insn_ptr = std::make_unique<insn_t>();
+            int len = decode_insn(insn_ptr.get(), ea);
+            insn_t& insn = *insn_ptr;
 
             if (len <= 0) {
                 throw std::runtime_error("No instruction at " + format_ea(ea));

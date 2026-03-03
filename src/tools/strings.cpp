@@ -11,35 +11,36 @@ namespace ida_mcp::tools::strings {
         limit = std::min(limit, 1000); // Cap at 1000
         bool case_sensitive = params.value("case_sensitive", false);
 
-        // Check if string list exists, build if needed
+        // Check binary size FIRST - before touching string list APIs
+        // Large binaries can cause heap corruption when string list isn't built
+        size_t func_count = get_func_qty();
+        
+        // Safe to query string list now (but check the count)
         size_t total_strings = get_strlist_qty();
-
-        if (total_strings == 0) {
-            // Check binary size before auto-building
-            size_t func_count = get_func_qty();
-
-            if (func_count > 50000) {
-                // Binary too large - refuse to auto-build
-                return json{
-                    {"count", 0},
-                    {"query", query.empty() ? nullptr : json(query)},
-                    {"strings", json::array()},
-                    {
-                        "note", "String list is empty. Binary is very large (" + std::to_string(func_count) +
-                                " functions). Please build string list manually in IDA: View → Strings (Shift+F12)"
-                    },
-                    {
-                        "diagnostic", {
-                            {"function_count", func_count},
-                            {"strlist_qty", 0},
-                            {"requires_manual_build", true},
-                            {"is_large_binary", true}
-                        }
+        
+        // Refuse to iterate if too many strings - can cause crashes on complex binaries
+        if (total_strings > 100000) {
+            return json{
+                {"count", 0},
+                {"query", query.empty() ? nullptr : json(query)},
+                {"strings", json::array()},
+                {
+                    "note", "String list is very large (" + std::to_string(total_strings) +
+                            " strings). Operations disabled to prevent crashes. "
+                            "Use get_string_at with specific addresses instead."
+                },
+                {
+                    "diagnostic", {
+                        {"function_count", func_count},
+                        {"string_count", total_strings},
+                        {"is_large_binary", true}
                     }
-                };
-            }
+                }
+            };
+        }
 
-            // Small binary - safe to build
+        if (total_strings == 0 && func_count < 50000) {
+            // Small binary with no strings - safe to build
             build_strlist();
             total_strings = get_strlist_qty();
 
@@ -49,6 +50,16 @@ namespace ida_mcp::tools::strings {
                     {"query", query.empty() ? nullptr : json(query)},
                     {"strings", json::array()},
                     {"note", "String list is empty after build. Database may not contain strings."}
+                };
+            }
+            
+            // Re-check after build
+            if (total_strings > 100000) {
+                return json{
+                    {"count", 0},
+                    {"query", query.empty() ? nullptr : json(query)},
+                    {"strings", json::array()},
+                    {"note", "String list too large after build (" + std::to_string(total_strings) + " strings)."}
                 };
             }
         }
@@ -73,9 +84,14 @@ namespace ida_mcp::tools::strings {
             ea_t ea = si.ea;
             if (ea == BADADDR) continue;
 
+            // Validate string info - invalid types can cause crashes
+            // Valid string types are typically 0-7 (STRTYPE_C through STRTYPE_C_32)
+            if (si.type > 32) continue;  // Skip invalid string types
+            if (si.length == 0 || si.length > 0x100000) continue;  // Skip zero-length or absurdly long
+
             // Get string content using the actual string type from string_info_t
             qstring str_content;
-            ssize_t len = get_strlit_contents(&str_content, ea, -1, si.type);
+            ssize_t len = get_strlit_contents(&str_content, ea, si.length, si.type);
             if (len <= 0) continue;
 
             std::string content = str_content.c_str();
