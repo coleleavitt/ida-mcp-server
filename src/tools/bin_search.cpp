@@ -7,7 +7,7 @@ namespace ida_mcp::tools::bin_search {
         json search_binary_pattern_impl(const json &params) {
             std::string pattern_str = params["pattern"].get<std::string>();
             int limit = params.value("limit", 100);
-
+            if (limit <= 0) limit = 100;  // Prevent negative limit wraparound
             ea_t start_ea = inf_get_min_ea();
             ea_t end_ea = inf_get_max_ea();
 
@@ -71,13 +71,21 @@ namespace ida_mcp::tools::bin_search {
             def.description = "Search for binary pattern with wildcards (e.g., '48 8B ?? ?? 90')";
             def.input_schema = json{
                 {"type", "object"},
-                {"properties", {
-                    {"pattern", {{"type", "string"}, {"description", "Binary pattern with ?? wildcards (e.g., '48 8B ?? ?? 90')"}}},
-                    {"start_address", {{"type", "string"}, {"description", "Hex start address"}}},
-                    {"end_address", {{"type", "string"}, {"description", "Hex end address"}}},
-                    {"radix", {{"type", "integer"}, {"description", "Number base (default: 16)"}}},
-                    {"limit", {{"type", "integer"}, {"description", "Max results (default: 100)"}}}
-                }},
+                {
+                    "properties", {
+                        {
+                            "pattern",
+                            {
+                                {"type", "string"},
+                                {"description", "Binary pattern with ?? wildcards (e.g., '48 8B ?? ?? 90')"}
+                            }
+                        },
+                        {"start_address", {{"type", "string"}, {"description", "Hex start address"}}},
+                        {"end_address", {{"type", "string"}, {"description", "Hex end address"}}},
+                        {"radix", {{"type", "integer"}, {"description", "Number base (default: 16)"}}},
+                        {"limit", {{"type", "integer"}, {"description", "Max results (default: 100)"}}}
+                    }
+                },
                 {"required", json::array({"pattern"})}
             };
             server.register_tool(def, search_binary_pattern_impl);

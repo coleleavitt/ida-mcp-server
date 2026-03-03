@@ -1,30 +1,31 @@
 #include "tools/tools.hpp"
 #include <ua.hpp>
 #include <allins.hpp>
+#include <memory>
 
 namespace ida_mcp::tools::instructions {
     namespace {
         // ARM64 specific constants (from arm.hpp)
-        #define aux_pac        0x10000
-        #define PAC_KEYMASK    0x07
-        #define PAC_KEY_IA     0x00
-        #define PAC_KEY_IB     0x01
-        #define PAC_KEY_DA     0x02
-        #define PAC_KEY_DB     0x03
-        #define PAC_KEY_GA     0x04
-        #define PAC_ADRMASK   (3<<3)
-        #define PAC_ADR_GPR   (0<<3)
-        #define PAC_ADR_X17   (1<<3)
-        #define PAC_ADR_X30   (2<<3)
-        #define PAC_MODMASK   (3<<5)
-        #define PAC_MOD_GPR   (0<<5)
-        #define PAC_MOD_ZR    (1<<5)
-        #define PAC_MOD_X16   (2<<5)
-        #define PAC_MOD_SP    (3<<5)
+#define aux_pac        0x10000
+#define PAC_KEYMASK    0x07
+#define PAC_KEY_IA     0x00
+#define PAC_KEY_IB     0x01
+#define PAC_KEY_DA     0x02
+#define PAC_KEY_DB     0x03
+#define PAC_KEY_GA     0x04
+#define PAC_ADRMASK   (3<<3)
+#define PAC_ADR_GPR   (0<<3)
+#define PAC_ADR_X17   (1<<3)
+#define PAC_ADR_X30   (2<<3)
+#define PAC_MODMASK   (3<<5)
+#define PAC_MOD_GPR   (0<<5)
+#define PAC_MOD_ZR    (1<<5)
+#define PAC_MOD_X16   (2<<5)
+#define PAC_MOD_SP    (3<<5)
 
         // Helper: Check if instruction is ARM64 atomic operation
         bool is_atomic_operation(uint16 itype) {
-            return (itype >= ARM_ldar && itype <= ARM_stlxp) ||  // Load-Acquire/Store-Release
+            return (itype >= ARM_ldar && itype <= ARM_stlxp) || // Load-Acquire/Store-Release
                    (itype >= ARM_ldadd && itype <= ARM_ldaddal) ||
                    (itype >= ARM_ldclr && itype <= ARM_ldclral) ||
                    (itype >= ARM_ldeor && itype <= ARM_ldeoral) ||
@@ -46,12 +47,12 @@ namespace ida_mcp::tools::instructions {
 
         // Helper: Check if instruction is crypto
         bool is_crypto_instruction(uint16 itype) {
-            return (itype >= ARM_aesd && itype <= ARM_aesmc) ||     // AES
+            return (itype >= ARM_aesd && itype <= ARM_aesmc) || // AES
                    (itype >= ARM_sha1c && itype <= ARM_sha256su1) || // SHA-1/256
                    (itype >= ARM_sha512h && itype <= ARM_sha512su1) || // SHA-512
                    (itype >= ARM_sm3partw1 && itype <= ARM_sm3tt2b) || // SM3
-                   (itype >= ARM_sm4e && itype <= ARM_sm4ekey) ||      // SM4
-                   (itype == ARM_crc32 || itype == ARM_crc32c);        // CRC32
+                   (itype >= ARM_sm4e && itype <= ARM_sm4ekey) || // SM4
+                   (itype == ARM_crc32 || itype == ARM_crc32c); // CRC32
         }
 
         // Helper: Check if instruction is PAC/AUT
@@ -60,7 +61,7 @@ namespace ida_mcp::tools::instructions {
         }
 
         // Helper: Get PAC key name
-        const char* get_pac_key_name(int key) {
+        const char *get_pac_key_name(int key) {
             switch (key) {
                 case PAC_KEY_IA: return "IA";
                 case PAC_KEY_IB: return "IB";
@@ -72,7 +73,7 @@ namespace ida_mcp::tools::instructions {
         }
 
         // Helper: Get PAC address mode
-        const char* get_pac_address_mode(int adr) {
+        const char *get_pac_address_mode(int adr) {
             switch (adr) {
                 case PAC_ADR_GPR: return "gpr";
                 case PAC_ADR_X17: return "x17";
@@ -82,7 +83,7 @@ namespace ida_mcp::tools::instructions {
         }
 
         // Helper: Get PAC modifier mode
-        const char* get_pac_modifier_mode(int mod) {
+        const char *get_pac_modifier_mode(int mod) {
             switch (mod) {
                 case PAC_MOD_GPR: return "gpr_sp";
                 case PAC_MOD_ZR: return "zero";
@@ -120,8 +121,11 @@ namespace ida_mcp::tools::instructions {
             }
             ea_t ea = ea_opt.value();
 
-            insn_t insn;
-            int len = decode_insn(&insn, ea);
+            // Use heap allocation to avoid stack corruption if insn_t size differs between SDK versions
+            auto insn_ptr = std::make_unique<insn_t>();
+            // insn_t default constructor handles initialization
+            int len = decode_insn(insn_ptr.get(), ea);
+            insn_t& insn = *insn_ptr;
 
             if (len <= 0) {
                 throw std::runtime_error("No instruction at " + format_ea(ea));
@@ -158,13 +162,20 @@ namespace ida_mcp::tools::instructions {
                 {"operands", operands}
             };
 
-            // Add ARM64-specific instruction classification
+            // Add ARM64-specific instruction classification (only for ARM processors)
+            qstring procname = inf_get_procname();
+            bool is_arm = procname.find("ARM") != qstring::npos ||
+                          procname.find("arm") != qstring::npos ||
+                          procname.find("AARCH64") != qstring::npos ||
+                          procname.find("aarch64") != qstring::npos;
+
             json arm64_info = json::object();
             bool has_arm64_info = false;
 
+            if (is_arm) {
             // Check for PAC instructions
             if (is_pac_instruction(insn)) {
-                int pac_flags = insn.insnpref;  // pac_flags is mapped to insnpref
+                int pac_flags = insn.insnpref; // pac_flags is mapped to insnpref
                 int key = pac_flags & PAC_KEYMASK;
                 int adr = pac_flags & PAC_ADRMASK;
                 int mod = pac_flags & PAC_MODMASK;
@@ -208,7 +219,9 @@ namespace ida_mcp::tools::instructions {
                 has_arm64_info = true;
             }
 
-            if (has_arm64_info) {
+            } // end if (is_arm)
+
+            if (is_arm && has_arm64_info) {
                 result["arm64"] = arm64_info;
             }
 
@@ -228,8 +241,9 @@ namespace ida_mcp::tools::instructions {
             }
 
             // Decode to get full disassembly
-            insn_t insn;
-            int len = decode_insn(&insn, ea);
+            auto insn_ptr = std::make_unique<insn_t>();
+            int len = decode_insn(insn_ptr.get(), ea);
+            insn_t& insn = *insn_ptr;
 
             if (len <= 0) {
                 throw std::runtime_error("Failed to decode instruction at " + format_ea(ea));
@@ -254,8 +268,9 @@ namespace ida_mcp::tools::instructions {
             }
             ea_t ea = ea_opt.value();
 
-            insn_t insn;
-            int len = decode_insn(&insn, ea);
+            auto insn_ptr = std::make_unique<insn_t>();
+            int len = decode_insn(insn_ptr.get(), ea);
+            insn_t& insn = *insn_ptr;
 
             if (len <= 0) {
                 throw std::runtime_error("No instruction at " + format_ea(ea));

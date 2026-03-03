@@ -16,7 +16,9 @@ namespace ida_mcp::tools::offsets {
             }
             ea_t target = target_opt.value();
 
-            bool success = op_offset(ea, operand, REF_OFF32, target);
+            // Use appropriate offset type based on segment bitness
+            reftype_t reftype = get_default_reftype(ea);
+            bool success = op_offset(ea, operand, reftype, target);
 
             return json{
                 {"address", format_ea(ea)},
@@ -62,7 +64,7 @@ namespace ida_mcp::tools::offsets {
                 throw std::runtime_error("Invalid base address format");
             }
             ea_t base = base_opt.value();
-            adiff_t tdelta = params["tdelta"].get<uint64_t>();
+            adiff_t tdelta = params["tdelta"].get<int64_t>();
 
             refinfo_t ri;
             ri.init(reftype, base, target, tdelta);
@@ -107,7 +109,9 @@ namespace ida_mcp::tools::offsets {
 
             // Get operand value
             insn_t insn;
-            decode_insn(&insn, ea);
+            if (decode_insn(&insn, ea) <= 0) {
+                throw std::runtime_error("Failed to decode instruction at " + format_ea(ea));
+            }
 
             ea_t target = BADADDR;
             if (operand >= 0 && operand < UA_MAXOP) {

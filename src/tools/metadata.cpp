@@ -96,22 +96,30 @@ namespace ida_mcp::tools::metadata {
                 proc_str.find("arm") != std::string::npos ||
                 proc_str.find("AARCH64") != std::string::npos ||
                 proc_str.find("aarch64") != std::string::npos) {
-
                 json arm_info = json::object();
 
                 // Detect ARM64 vs ARM32
                 bool is_arm64 = inf_is_64bit() || proc_str.find("64") != std::string::npos ||
-                               proc_str.find("AARCH64") != std::string::npos;
+                                proc_str.find("AARCH64") != std::string::npos;
                 arm_info["is_arm64"] = is_arm64;
                 arm_info["is_arm32"] = !is_arm64;
 
                 if (is_arm64) {
-                    // ARM64-specific features
-                    arm_info["supports_pac"] = true;  // ARM64E pointer authentication
-                    arm_info["supports_bti"] = true;  // Branch Target Identification
-                    arm_info["supports_mte"] = true;  // Memory Tagging Extension
-                    arm_info["supports_atomics"] = true; // LSE atomics
+                    // ARM64-specific features - note: these are architecture capabilities,
+                    // actual availability depends on specific CPU and OS
                     arm_info["architecture"] = "ARMv8-A or later";
+                    // Don't claim specific extension support without actually checking;
+                    // these are optional extensions introduced in different architecture versions:
+                    // - PAC (Pointer Authentication): ARMv8.3-A
+                    // - BTI (Branch Target Identification): ARMv8.5-A
+                    // - MTE (Memory Tagging Extension): ARMv8.5-A
+                    // - LSE (Large System Extensions / Atomics): ARMv8.1-A
+                    arm_info["possible_extensions"] = json::array({
+                        "PAC (ARMv8.3+)",
+                        "BTI (ARMv8.5+)",
+                        "MTE (ARMv8.5+)",
+                        "LSE atomics (ARMv8.1+)"
+                    });
                 } else {
                     arm_info["architecture"] = "ARMv7 or earlier";
                 }
@@ -160,17 +168,15 @@ namespace ida_mcp::tools::metadata {
                             has_function_starts = true;
                         }
 
-                        // Detect data-in-code: check for __DATA_CONST or __const sections
-                        if (name_str.find("__const") != std::string::npos ||
-                            name_str.find("__DATA_CONST") != std::string::npos) {
-                            has_data_in_code = true;
-                        }
+                        // Note: We cannot reliably detect LC_DATA_IN_CODE from segment info alone.
+                        // LC_DATA_IN_CODE marks data tables embedded WITHIN code sections (like jump tables),
+                        // not the presence of __const sections.
                     }
                     seg = get_next_seg(seg->end_ea);
                 }
 
                 macho_info["has_linkedit"] = has_linkedit;
-                macho_info["has_data_const"] = has_data_const;  // Indicates modern Mach-O
+                macho_info["has_data_const"] = has_data_const; // Indicates modern Mach-O
                 macho_info["has_objc_sections"] = has_objc;
                 macho_info["has_swift_sections"] = has_swift;
 
@@ -180,11 +186,9 @@ namespace ida_mcp::tools::metadata {
                     macho_info["function_starts_info"] = "LC_FUNCTION_STARTS likely present (__LINKEDIT found)";
                 }
 
-                // LC_DATA_IN_CODE detection (heuristic: const sections)
-                if (has_data_in_code) {
-                    macho_info["likely_has_data_in_code"] = true;
-                    macho_info["data_in_code_info"] = "LC_DATA_IN_CODE likely present (const sections found)";
-                }
+                // Note: LC_DATA_IN_CODE cannot be reliably detected from segment analysis.
+                // It marks data regions within code sections, which would require parsing
+                // the Mach-O load commands directly.
 
                 // Encrypted segment detection
                 if (has_encrypted) {

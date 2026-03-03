@@ -5,7 +5,7 @@
 
 namespace ida_mcp::tools::database {
     static json get_database_info(const json &params) {
-        (void)params; // Unused
+        (void) params; // Unused
         // Get database information
         std::array<char, QMAXPATH> input_file{};
         get_input_file_path(input_file.data(), input_file.size());
@@ -41,8 +41,8 @@ namespace ida_mcp::tools::database {
         uint32 flags = static_cast<uint32>(-1);
 
         // Check for optional output file path
+        std::string path_storage;  // Local storage for the path string
         if (params.contains("outfile") && !params["outfile"].is_null()) {
-            static std::string path_storage;
             path_storage = params["outfile"].get<std::string>();
             outfile = path_storage.c_str();
         }
@@ -122,7 +122,7 @@ namespace ida_mcp::tools::database {
 
     // Check if database is trusted
     static json handle_is_trusted_idb(const json &params) {
-        (void)params; // Unused
+        (void) params; // Unused
         bool trusted = is_trusted_idb();
 
         return json{
@@ -275,7 +275,7 @@ namespace ida_mcp::tools::database {
 
     // Check if auto-analysis is OK
     static json handle_auto_is_ok(const json &params) {
-        (void)params; // Unused
+        (void) params; // Unused
         bool is_ok = auto_is_ok();
 
         return json{

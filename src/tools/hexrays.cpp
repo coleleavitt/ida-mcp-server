@@ -12,10 +12,10 @@
 namespace ida_mcp::tools::hexrays {
     namespace {
         // Sanitize filename - remove characters that are invalid in filenames
-        std::string sanitize_filename(const std::string& name) {
+        std::string sanitize_filename(const std::string &name) {
             std::string result;
             result.reserve(name.size());
-            for (char c : name) {
+            for (char c: name) {
                 if (std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '-' || c == '.') {
                     result += c;
                 } else {
@@ -107,12 +107,40 @@ namespace ida_mcp::tools::hexrays {
         std::string output_dir = ".";
         if (params.contains("output_dir") && params["output_dir"].is_string()) {
             output_dir = params["output_dir"].get<std::string>();
+            // Security: reject path traversal attempts
+            if (output_dir.find("..") != std::string::npos) {
+                throw std::runtime_error("Path traversal not allowed in output_dir");
+            }
         }
 
-        // Create output directory if it doesn't exist
+        // Create output directory securely
         std::filesystem::path out_path(output_dir);
+        
+        // Security: Use weakly_canonical for path normalization, then check if safe
+        // Note: weakly_canonical works on non-existent paths unlike canonical()
+        std::error_code ec;
+        out_path = std::filesystem::weakly_canonical(out_path, ec);
+        if (ec) {
+            throw std::runtime_error("Invalid output directory path: " + ec.message());
+        }
+        
+        // Ensure the path is absolute after canonicalization
+        if (!out_path.is_absolute()) {
+            out_path = std::filesystem::absolute(out_path, ec);
+            if (ec) {
+                throw std::runtime_error("Cannot resolve absolute path: " + ec.message());
+            }
+        }
+        
+        // Create directory with restrictive permissions if it doesn't exist
         if (!std::filesystem::exists(out_path)) {
-            std::filesystem::create_directories(out_path);
+            // Create with default permissions (umask applies)
+            std::filesystem::create_directories(out_path, ec);
+            if (ec) {
+                throw std::runtime_error("Failed to create output directory: " + ec.message());
+            }
+        } else if (!std::filesystem::is_directory(out_path)) {
+            throw std::runtime_error("Output path exists but is not a directory");
         }
 
         // Optional: filter by name pattern (regex)
@@ -226,8 +254,38 @@ namespace ida_mcp::tools::hexrays {
             std::string filename = format_ea(func->start_ea) + "_" + sanitize_filename(func_name) + ".c";
             std::filesystem::path file_path = out_path / filename;
 
+            // Security: Verify the resolved path is still within our output directory
+            // This prevents symlink attacks where filename could escape the directory
+            std::error_code write_ec;
+            auto resolved_file = std::filesystem::weakly_canonical(file_path, write_ec);
+            
+            // Ensure out_path ends with separator for proper prefix matching
+            // This prevents /tmp/out matching /tmp/out_evil
+            auto out_path_str = out_path.string();
+            if (!out_path_str.empty() && out_path_str.back() != std::filesystem::path::preferred_separator) {
+                out_path_str += std::filesystem::path::preferred_separator;
+            }
+            auto resolved_str = resolved_file.string();
+            
+            // Check: resolved path must start with out_path (including trailing separator)
+            bool path_escape = write_ec || 
+                               resolved_str.size() < out_path_str.size() ||
+                               resolved_str.compare(0, out_path_str.size(), out_path_str) != 0;
+            
+            if (path_escape) {
+                failed_count++;
+                if (failed_functions.size() < 100) {
+                    failed_functions.push_back(json{
+                        {"name", func_name},
+                        {"address", format_ea(func->start_ea)},
+                        {"error", "Path escape attempt detected"}
+                    });
+                }
+                continue;
+            }
+
             // Write to file
-            std::ofstream ofs(file_path);
+            std::ofstream ofs(file_path, std::ios::out | std::ios::trunc);
             if (ofs.is_open()) {
                 ofs << content;
                 ofs.close();
@@ -290,7 +348,7 @@ namespace ida_mcp::tools::hexrays {
             mcp::ToolDefinition def;
             def.name = "export_all_decompiled";
             def.description = "Export all decompiled functions to individual .c files in a directory. "
-                              "Each file contains the pseudocode with a header showing function name, address, and signature.";
+                    "Each file contains the pseudocode with a header showing function name, address, and signature.";
             def.input_schema = json{
                 {"type", "object"},
                 {
@@ -298,13 +356,19 @@ namespace ida_mcp::tools::hexrays {
                         {
                             "output_dir", {
                                 {"type", "string"},
-                                {"description", "Output directory path. Defaults to current working directory if not specified."}
+                                {
+                                    "description",
+                                    "Output directory path. Defaults to current working directory if not specified."
+                                }
                             }
                         },
                         {
                             "name_filter", {
                                 {"type", "string"},
-                                {"description", "Optional regex pattern to filter functions by name. Only functions matching this pattern will be exported."}
+                                {
+                                    "description",
+                                    "Optional regex pattern to filter functions by name. Only functions matching this pattern will be exported."
+                                }
                             }
                         },
                         {

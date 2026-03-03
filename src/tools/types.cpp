@@ -194,7 +194,7 @@ namespace ida_mcp::tools::types {
 
             // Iterate through all ordinals
             uint32 ord_limit = get_ordinal_limit(ti);
-            for (uint32 ord = 1; ord < ord_limit && enums.size() < (size_t)limit; ord++) {
+            for (uint32 ord = 1; ord < ord_limit && enums.size() < (size_t) limit; ord++) {
                 tinfo_t tif;
                 if (tif.get_numbered_type(ti, ord)) {
                     if (tif.is_enum()) {
@@ -221,7 +221,7 @@ namespace ida_mcp::tools::types {
             return json{
                 {"enum_count", enums.size()},
                 {"enums", enums},
-                {"truncated", enums.size() >= (size_t)limit}
+                {"truncated", enums.size() >= (size_t) limit}
             };
         }
 
@@ -287,7 +287,7 @@ namespace ida_mcp::tools::types {
             json structs = json::array();
 
             uint32 ord_limit = get_ordinal_limit(ti);
-            for (uint32 ord = 1; ord < ord_limit && structs.size() < (size_t)limit; ord++) {
+            for (uint32 ord = 1; ord < ord_limit && structs.size() < (size_t) limit; ord++) {
                 tinfo_t tif;
                 if (tif.get_numbered_type(ti, ord)) {
                     if (tif.is_udt()) {
@@ -313,7 +313,7 @@ namespace ida_mcp::tools::types {
             return json{
                 {"struct_count", structs.size()},
                 {"structs", structs},
-                {"truncated", structs.size() >= (size_t)limit}
+                {"truncated", structs.size() >= (size_t) limit}
             };
         }
 
@@ -431,6 +431,118 @@ namespace ida_mcp::tools::types {
                 {"element_size", elem_size},
                 {"total_size", total_size},
                 {"base", atd.base}
+            };
+        }
+
+        // Describe a type library ordinal (IDA 9.3+)
+        // Signature from decompiled libida.so @ 0x55f7b0:
+        //   describe_tlc_ordinal(qstring *out, til_t *ti, uint32 ordinal,
+        //                        ???, ???, ???, char flags)
+        // We only need the first 3 params — the rest default to 0/nullptr.
+        struct tlc_desc_result_t {
+            qstring desc;
+            char pad[82];
+        };
+
+        extern "C" int64 describe_tlc_ordinal(
+            tlc_desc_result_t *out,
+            til_t *ti,
+            uint32 ordinal,
+            int64 a4,
+            int64 a5,
+            int64 a6,
+            char a7);
+
+        json handle_describe_tlc_ordinal(const json &params) {
+            if (!params.contains("ordinal")) {
+                return json{{"error", "Missing required parameter: ordinal"}};
+            }
+
+            uint32 ordinal = params["ordinal"].get<uint32>();
+            til_t *ti = get_idati();
+            if (ti == nullptr) {
+                return json{{"error", "No type library available"}};
+            }
+
+            uint32 ord_limit = get_ordinal_limit(ti);
+            if (ordinal == 0 || ordinal >= ord_limit) {
+                return json{
+                    {"error", "Ordinal out of range"},
+                    {"ordinal", ordinal},
+                    {"ordinal_limit", ord_limit}
+                };
+            }
+
+            tlc_desc_result_t result{};
+            memset(result.pad, 0, sizeof(result.pad));
+            describe_tlc_ordinal(&result, ti, ordinal, 0, 0, 0, 0);
+
+            tinfo_t tif;
+            json type_kind = nullptr;
+            if (tif.get_numbered_type(ti, ordinal)) {
+                if (tif.is_struct()) type_kind = "struct";
+                else if (tif.is_union()) type_kind = "union";
+                else if (tif.is_enum()) type_kind = "enum";
+                else if (tif.is_func()) type_kind = "function";
+                else if (tif.is_ptr()) type_kind = "pointer";
+                else if (tif.is_array()) type_kind = "array";
+                else if (tif.is_typedef()) type_kind = "typedef";
+                else type_kind = "other";
+            }
+
+            return json{
+                {"ordinal", ordinal},
+                {"description", result.desc.empty() ? "" : result.desc.c_str()},
+                {"type_kind", type_kind},
+                {"ordinal_limit", ord_limit}
+            };
+        }
+
+        json handle_describe_tlc_ordinals_range(const json &params) {
+            til_t *ti = get_idati();
+            if (ti == nullptr) {
+                return json{{"error", "No type library available"}};
+            }
+
+            uint32 ord_limit = get_ordinal_limit(ti);
+            uint32 start = params.value("start", static_cast<uint32>(1));
+            uint32 count = params.value("count", static_cast<uint32>(100));
+            if (start == 0) start = 1;
+            if (count > 10000) count = 10000;
+
+            json entries = json::array();
+            for (uint32 ord = start; ord < ord_limit && entries.size() < count; ord++) {
+                tlc_desc_result_t result{};
+                memset(result.pad, 0, sizeof(result.pad));
+                describe_tlc_ordinal(&result, ti, ord, 0, 0, 0, 0);
+
+                if (result.desc.empty()) continue;
+
+                tinfo_t tif;
+                json type_kind = nullptr;
+                if (tif.get_numbered_type(ti, ord)) {
+                    if (tif.is_struct()) type_kind = "struct";
+                    else if (tif.is_union()) type_kind = "union";
+                    else if (tif.is_enum()) type_kind = "enum";
+                    else if (tif.is_func()) type_kind = "function";
+                    else if (tif.is_ptr()) type_kind = "pointer";
+                    else if (tif.is_array()) type_kind = "array";
+                    else if (tif.is_typedef()) type_kind = "typedef";
+                    else type_kind = "other";
+                }
+
+                entries.push_back(json{
+                    {"ordinal", ord},
+                    {"description", result.desc.c_str()},
+                    {"type_kind", type_kind}
+                });
+            }
+
+            return json{
+                {"ordinal_limit", ord_limit},
+                {"start", start},
+                {"returned", entries.size()},
+                {"entries", entries}
             };
         }
     } // anonymous namespace

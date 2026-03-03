@@ -13,7 +13,7 @@ namespace ida_mcp::tools::memory {
         }
 
         // Helper: Classify Mach-O section type
-        const char* classify_macho_section(const std::string& seg_name) {
+        const char *classify_macho_section(const std::string &seg_name) {
             // Objective-C sections
             if (seg_name.find("__objc_classlist") != std::string::npos) return "objc_class_list";
             if (seg_name.find("__objc_catlist") != std::string::npos) return "objc_category_list";
@@ -148,7 +148,7 @@ namespace ida_mcp::tools::memory {
             // Add Mach-O section type classification if applicable
             if (is_macho_binary() && seg != nullptr) {
                 std::string seg_name_str = seg_name.c_str();
-                const char* section_type = classify_macho_section(seg_name_str);
+                const char *section_type = classify_macho_section(seg_name_str);
 
                 if (section_type != nullptr) {
                     json macho_info = json::object();
@@ -184,7 +184,7 @@ namespace ida_mcp::tools::memory {
 
                 // Try to get line number using netnode (NALT_LINNUM = 9)
                 netnode n(ea);
-                uval_t linenum = n.altval(9);  // NALT_LINNUM
+                uval_t linenum = n.altval(9); // NALT_LINNUM
                 if (linenum != 0) {
                     source_info["line_number"] = static_cast<uint64_t>(linenum);
                 }

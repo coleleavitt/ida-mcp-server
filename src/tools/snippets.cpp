@@ -81,7 +81,7 @@ namespace ida_mcp::tools::snippets {
 
             std::vector<idc_value_t> args;
             if (params.contains("args") && params["args"].is_array()) {
-                for (const auto &arg : params["args"]) {
+                for (const auto &arg: params["args"]) {
                     idc_value_t val;
                     if (arg.is_number_integer()) {
                         val.set_long(arg.get<sval_t>());
@@ -89,7 +89,11 @@ namespace ida_mcp::tools::snippets {
                         qstring s(arg.get<std::string>().c_str());
                         val.set_string(s);
                     } else if (arg.is_number_float()) {
-                        val.set_long(static_cast<sval_t>(arg.get<double>()));
+                        // Convert double to fpvalue_t for IDA's float type
+                        double fval = arg.get<double>();
+                        fpvalue_t fpval;
+                        ieee_realcvt(&fval, &fpval, 3);  // 3 = load double (8 bytes), src->dest
+                        val.set_float(fpval);
                     } else {
                         val.set_long(0);
                     }
@@ -119,53 +123,67 @@ namespace ida_mcp::tools::snippets {
         }
     }
 
-    void register_tools(mcp::McpServer &server) {
-        {
+    void register_tools(mcp::McpServer &server) { {
             mcp::ToolDefinition def;
             def.name = "compile_idc_snippet";
             def.description = "Compile IDC code into a callable function. "
-                "Supports multi-statement code blocks, variable declarations, loops, etc. "
-                "Call call_idc_function afterwards to execute it.";
+                    "Supports multi-statement code blocks, variable declarations, loops, etc. "
+                    "Call call_idc_function afterwards to execute it.";
             def.input_schema = json{
                 {"type", "object"},
-                {"properties", {
-                    {"code", {{"type", "string"}, {"description", "IDC code to compile"}}},
-                    {"function_name", {{"type", "string"}, {"description", "Name for the compiled function (default: __mcp_snippet)"}}},
-                    {"safe_only", {{"type", "boolean"}, {"description", "Only allow safe function calls (default false)"}}}
-                }},
+                {
+                    "properties", {
+                        {"code", {{"type", "string"}, {"description", "IDC code to compile"}}},
+                        {
+                            "function_name",
+                            {
+                                {"type", "string"},
+                                {"description", "Name for the compiled function (default: __mcp_snippet)"}
+                            }
+                        },
+                        {
+                            "safe_only",
+                            {{"type", "boolean"}, {"description", "Only allow safe function calls (default false)"}}
+                        }
+                    }
+                },
                 {"required", json::array({"code"})}
             };
             server.register_tool(def, compile_snippet_impl);
-        }
-
-        {
+        } {
             mcp::ToolDefinition def;
             def.name = "eval_idc_snippet";
             def.description = "Compile and execute IDC statements. "
-                "Unlike eval_expression, this handles multi-statement code with variable declarations, "
-                "loops, conditionals, and function calls. Returns the result of the last expression.";
+                    "Unlike eval_expression, this handles multi-statement code with variable declarations, "
+                    "loops, conditionals, and function calls. Returns the result of the last expression.";
             def.input_schema = json{
                 {"type", "object"},
-                {"properties", {
-                    {"code", {{"type", "string"}, {"description", "IDC statements to execute"}}}
-                }},
+                {
+                    "properties", {
+                        {"code", {{"type", "string"}, {"description", "IDC statements to execute"}}}
+                    }
+                },
                 {"required", json::array({"code"})}
             };
             server.register_tool(def, eval_snippet_impl);
-        }
-
-        {
+        } {
             mcp::ToolDefinition def;
             def.name = "call_idc_function";
             def.description = "Call a previously compiled or built-in IDC function by name. "
-                "Supports passing integer, string, and float arguments.";
+                    "Supports passing integer, string, and float arguments.";
             def.input_schema = json{
                 {"type", "object"},
-                {"properties", {
-                    {"function_name", {{"type", "string"}, {"description", "IDC function name"}}},
-                    {"args", {{"type", "array"}, {"description", "Arguments to pass (integers, strings, or floats)"},
-                              {"items", {}}}}
-                }},
+                {
+                    "properties", {
+                        {"function_name", {{"type", "string"}, {"description", "IDC function name"}}},
+                        {
+                            "args", {
+                                {"type", "array"}, {"description", "Arguments to pass (integers, strings, or floats)"},
+                                {"items", {}}
+                            }
+                        }
+                    }
+                },
                 {"required", json::array({"function_name"})}
             };
             server.register_tool(def, call_idc_func_impl);

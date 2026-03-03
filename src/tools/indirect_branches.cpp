@@ -59,8 +59,11 @@ namespace ida_mcp::tools::indirect_branches {
                         ea_t case_ea = BADADDR;
                         if (si.get_jtable_element_size() == 4) {
                             uint32 offset = get_dword(target);
-                            if (offset != BADADDR) {
-                                case_ea = si.jumps + offset;
+                            // For 32-bit entries, check against 32-bit max (not 64-bit BADADDR)
+                            if (offset != 0xFFFFFFFF) {
+                                // Check if this is a relative or absolute offset
+                                // Many jump tables use relative offsets from table base
+                                case_ea = si.elbase + static_cast<int32>(offset);
                             }
                         } else if (si.get_jtable_element_size() == 8) {
                             uint64 offset = get_qword(target);
@@ -99,9 +102,13 @@ namespace ida_mcp::tools::indirect_branches {
                     if (func != nullptr) {
                         // Try to find the register value using reg_finder_t
                         reg_value_info_t reg_value;
-                        if (find_reg_value_info(&reg_value, ea, op.reg, 0)) {  // 0 = use default depth from config
+                        if (find_reg_value_info(&reg_value, ea, op.reg, 0)) {
+                            // 0 = use default depth from config
                             result["register_tracking"] = {
-                                {"state", reg_value.is_unknown() ? "unknown" : (reg_value.is_num() ? "resolved" : "spd")}
+                                {
+                                    "state",
+                                    reg_value.is_unknown() ? "unknown" : (reg_value.is_num() ? "resolved" : "spd")
+                                }
                             };
 
                             // If we resolved to a constant value, that's the target!

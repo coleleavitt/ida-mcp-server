@@ -205,7 +205,10 @@ namespace ida_mcp::tools::function_context {
                 if (proc_name == "cli") {
                     context["decompilation"] = {
                         {"available", false},
-                        {"note", "Decompilation not supported for .NET/CLI binaries (IL bytecode, not native assembly)"},
+                        {
+                            "note",
+                            "Decompilation not supported for .NET/CLI binaries (IL bytecode, not native assembly)"
+                        },
                         {"processor", proc_name.c_str()}
                     };
                 } else {
@@ -324,7 +327,6 @@ namespace ida_mcp::tools::function_context {
                             catch_blocks.push_back(catch_info);
                         }
                         tb_info["catch_blocks"] = catch_blocks;
-
                     } else if (tb.is_seh()) {
                         tb_info["type"] = "seh_exception";
                         const seh_t &seh = tb.seh();

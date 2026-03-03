@@ -145,7 +145,7 @@ namespace ida_mcp::tools::debugger {
             }
 
             return json{
-                {"breakpoint_count", qty},
+                {"breakpoint_count", breakpoints.size()},  // Use actual count, not get_bpt_qty()
                 {"breakpoints", breakpoints}
             };
         }
