@@ -72,6 +72,7 @@ namespace error_codes {
     constexpr int INVALID_PARAMS = -32602;
     constexpr int INTERNAL_ERROR = -32603;
     // MCP-specific error codes
+    constexpr int REQUEST_CANCELLED = -32800;      // Request was cancelled
     constexpr int URL_ELICITATION_REQUIRED = -32042;
 }
 

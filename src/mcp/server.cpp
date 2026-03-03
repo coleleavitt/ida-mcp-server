@@ -42,13 +42,14 @@ namespace ida_mcp::mcp {
 
         json request_id = request.id.value();
 
-        // Check if this request was cancelled - silently drop per MCP spec
+        // Check if this request was cancelled
         {
             std::lock_guard<std::mutex> lock(mutex_);
             if (cancelled_requests_.count(request_id) > 0) {
                 cancelled_requests_.erase(request_id);
-                // MCP spec: cancelled requests should be silently dropped
-                return McpResponse::notification_accepted();
+                // MCP spec: return error code -32800 for cancelled requests
+                return McpResponse::make_error(request_id, error_codes::REQUEST_CANCELLED,
+                                               "Request was cancelled");
             }
         }
 
@@ -238,21 +239,55 @@ namespace ida_mcp::mcp {
             if (it != resources_.end()) {
                 handler = it->second.handler;
             } else {
-                // Try to match against resource templates
+                // Try to match against resource templates using RFC 6570-style matching
+                // Supports simple templates like "scheme://path/{variable}/suffix"
                 bool found = false;
                 for (const auto &entry : resource_templates_) {
-                    // Simple template matching: check if URI matches template pattern
-                    // Template format: "scheme://path/{variable}" or similar
-                    // For now, use prefix matching before the first '{' character
                     const std::string& tmpl = entry.tmpl.uri_template;
+                    
+                    // Check if template has variables
                     size_t brace_pos = tmpl.find('{');
-                    if (brace_pos != std::string::npos) {
-                        // Check if URI starts with the template prefix
-                        std::string prefix = tmpl.substr(0, brace_pos);
-                        if (uri.compare(0, prefix.length(), prefix) == 0) {
+                    if (brace_pos == std::string::npos) {
+                        // Literal template - exact match required
+                        if (uri == tmpl) {
                             handler = entry.handler;
                             found = true;
                             break;
+                        }
+                    } else {
+                        // Template with variables - segment-based matching
+                        // Match prefix before first variable
+                        std::string prefix = tmpl.substr(0, brace_pos);
+                        if (uri.compare(0, prefix.length(), prefix) != 0) {
+                            continue;  // Prefix doesn't match
+                        }
+                        
+                        // Find the closing brace and suffix after the variable
+                        size_t close_brace = tmpl.find('}', brace_pos);
+                        if (close_brace == std::string::npos) {
+                            continue;  // Malformed template
+                        }
+                        
+                        // Get the suffix after the variable (if any)
+                        std::string suffix = tmpl.substr(close_brace + 1);
+                        
+                        if (suffix.empty()) {
+                            // No suffix - URI just needs to start with prefix
+                            // and have some content for the variable
+                            if (uri.length() > prefix.length()) {
+                                handler = entry.handler;
+                                found = true;
+                                break;
+                            }
+                        } else {
+                            // Has suffix - URI must end with it
+                            // and have content between prefix and suffix
+                            if (uri.length() > prefix.length() + suffix.length() &&
+                                uri.compare(uri.length() - suffix.length(), suffix.length(), suffix) == 0) {
+                                handler = entry.handler;
+                                found = true;
+                                break;
+                            }
                         }
                     }
                 }
