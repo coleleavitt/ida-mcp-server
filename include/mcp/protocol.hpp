@@ -300,7 +300,7 @@ inline std::string logging_level_to_string(LoggingLevel level) {
     }
 }
 
-inline LoggingLevel logging_level_from_string(const std::string& s) {
+inline std::optional<LoggingLevel> logging_level_from_string(const std::string& s) {
     if (s == "debug") return LoggingLevel::Debug;
     if (s == "info") return LoggingLevel::Info;
     if (s == "notice") return LoggingLevel::Notice;
@@ -309,7 +309,7 @@ inline LoggingLevel logging_level_from_string(const std::string& s) {
     if (s == "critical") return LoggingLevel::Critical;
     if (s == "alert") return LoggingLevel::Alert;
     if (s == "emergency") return LoggingLevel::Emergency;
-    return LoggingLevel::Info;
+    return std::nullopt;  // Reject unknown levels
 }
 
 // ============================================================================

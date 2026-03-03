@@ -94,7 +94,8 @@ private:
     // Logging state
     LoggingLevel logging_level_ = LoggingLevel::Info;
 
-    // Cancelled request tracking
+    // Cancelled request tracking (bounded to prevent memory growth)
+    static constexpr size_t MAX_CANCELLED_REQUESTS = 1000;
     std::set<json> cancelled_requests_;
 
     mutable std::mutex mutex_;

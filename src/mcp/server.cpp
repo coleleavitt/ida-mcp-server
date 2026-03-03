@@ -42,13 +42,13 @@ namespace ida_mcp::mcp {
 
         json request_id = request.id.value();
 
-        // Check if this request was cancelled
+        // Check if this request was cancelled - silently drop per MCP spec
         {
             std::lock_guard<std::mutex> lock(mutex_);
             if (cancelled_requests_.count(request_id) > 0) {
                 cancelled_requests_.erase(request_id);
-                return McpResponse::make_error(request_id, error_codes::INTERNAL_ERROR,
-                                               "Request was cancelled");
+                // MCP spec: cancelled requests should be silently dropped
+                return McpResponse::notification_accepted();
             }
         }
 
@@ -228,15 +228,38 @@ namespace ida_mcp::mcp {
 
         std::string uri = params["uri"];
 
-        // Find resource handler
+        // Find resource handler - check concrete resources first, then templates
         ResourceHandler handler;
         {
             std::lock_guard<std::mutex> lock(mutex_);
+            
+            // First, try exact match in concrete resources
             auto it = resources_.find(uri);
-            if (it == resources_.end()) {
-                throw std::runtime_error("Resource not found: " + uri);
+            if (it != resources_.end()) {
+                handler = it->second.handler;
+            } else {
+                // Try to match against resource templates
+                bool found = false;
+                for (const auto &entry : resource_templates_) {
+                    // Simple template matching: check if URI matches template pattern
+                    // Template format: "scheme://path/{variable}" or similar
+                    // For now, use prefix matching before the first '{' character
+                    const std::string& tmpl = entry.tmpl.uri_template;
+                    size_t brace_pos = tmpl.find('{');
+                    if (brace_pos != std::string::npos) {
+                        // Check if URI starts with the template prefix
+                        std::string prefix = tmpl.substr(0, brace_pos);
+                        if (uri.compare(0, prefix.length(), prefix) == 0) {
+                            handler = entry.handler;
+                            found = true;
+                            break;
+                        }
+                    }
+                }
+                if (!found) {
+                    throw std::runtime_error("Resource not found: " + uri);
+                }
             }
-            handler = it->second.handler;
         }
 
         // Execute handler on main thread
@@ -340,9 +363,12 @@ namespace ida_mcp::mcp {
         }
 
         std::string level_str = params["level"];
-        LoggingLevel level = logging_level_from_string(level_str);
+        auto level_opt = logging_level_from_string(level_str);
+        if (!level_opt.has_value()) {
+            throw std::runtime_error("Invalid logging level: " + level_str);
+        }
 
-        set_logging_level(level);
+        set_logging_level(level_opt.value());
 
         return json::object();  // Empty result on success
     }
@@ -357,6 +383,13 @@ namespace ida_mcp::mcp {
         }
 
         std::lock_guard<std::mutex> lock(mutex_);
+        
+        // Enforce bounded size to prevent memory growth
+        // Remove oldest entries if we've hit the limit
+        while (cancelled_requests_.size() >= MAX_CANCELLED_REQUESTS) {
+            cancelled_requests_.erase(cancelled_requests_.begin());
+        }
+        
         cancelled_requests_.insert(params["requestId"]);
     }
 
