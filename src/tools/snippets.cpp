@@ -89,9 +89,11 @@ namespace ida_mcp::tools::snippets {
                         qstring s(arg.get<std::string>().c_str());
                         val.set_string(s);
                     } else if (arg.is_number_float()) {
-                        // Properly handle floating-point values
+                        // Convert double to fpvalue_t for IDA's float type
                         double fval = arg.get<double>();
-                        val.set_float(fval);
+                        fpvalue_t fpval;
+                        ieee_realcvt(&fval, &fpval, 3);  // 3 = load double (8 bytes), src->dest
+                        val.set_float(fpval);
                     } else {
                         val.set_long(0);
                     }
