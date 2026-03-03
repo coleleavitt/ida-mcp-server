@@ -208,7 +208,8 @@ target_link_libraries(ida_mcp_server
 # Installation
 # =============================================================================
 install(TARGETS ida_mcp_server
-        LIBRARY DESTINATION "${IDA_INSTALL_DIR}/plugins"
+        LIBRARY DESTINATION "${IDA_INSTALL_DIR}/plugins"  # Linux/macOS .so/.dylib
+        RUNTIME DESTINATION "${IDA_INSTALL_DIR}/plugins"  # Windows .dll
 )
 
 # =============================================================================

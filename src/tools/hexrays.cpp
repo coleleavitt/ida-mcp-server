@@ -258,9 +258,21 @@ namespace ida_mcp::tools::hexrays {
             // This prevents symlink attacks where filename could escape the directory
             std::error_code write_ec;
             auto resolved_file = std::filesystem::weakly_canonical(file_path, write_ec);
+            
+            // Ensure out_path ends with separator for proper prefix matching
+            // This prevents /tmp/out matching /tmp/out_evil
             auto out_path_str = out_path.string();
+            if (!out_path_str.empty() && out_path_str.back() != std::filesystem::path::preferred_separator) {
+                out_path_str += std::filesystem::path::preferred_separator;
+            }
             auto resolved_str = resolved_file.string();
-            if (write_ec || resolved_str.compare(0, out_path_str.size(), out_path_str) != 0) {
+            
+            // Check: resolved path must start with out_path (including trailing separator)
+            bool path_escape = write_ec || 
+                               resolved_str.size() < out_path_str.size() ||
+                               resolved_str.compare(0, out_path_str.size(), out_path_str) != 0;
+            
+            if (path_escape) {
                 failed_count++;
                 if (failed_functions.size() < 100) {
                     failed_functions.push_back(json{
