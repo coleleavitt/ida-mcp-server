@@ -113,11 +113,34 @@ namespace ida_mcp::tools::hexrays {
             }
         }
 
-        // Create output directory if it doesn't exist
+        // Create output directory securely
         std::filesystem::path out_path(output_dir);
-        out_path = std::filesystem::weakly_canonical(out_path);
+        
+        // Security: Use weakly_canonical for path normalization, then check if safe
+        // Note: weakly_canonical works on non-existent paths unlike canonical()
+        std::error_code ec;
+        out_path = std::filesystem::weakly_canonical(out_path, ec);
+        if (ec) {
+            throw std::runtime_error("Invalid output directory path: " + ec.message());
+        }
+        
+        // Ensure the path is absolute after canonicalization
+        if (!out_path.is_absolute()) {
+            out_path = std::filesystem::absolute(out_path, ec);
+            if (ec) {
+                throw std::runtime_error("Cannot resolve absolute path: " + ec.message());
+            }
+        }
+        
+        // Create directory with restrictive permissions if it doesn't exist
         if (!std::filesystem::exists(out_path)) {
-            std::filesystem::create_directories(out_path);
+            // Create with default permissions (umask applies)
+            std::filesystem::create_directories(out_path, ec);
+            if (ec) {
+                throw std::runtime_error("Failed to create output directory: " + ec.message());
+            }
+        } else if (!std::filesystem::is_directory(out_path)) {
+            throw std::runtime_error("Output path exists but is not a directory");
         }
 
         // Optional: filter by name pattern (regex)
@@ -231,8 +254,26 @@ namespace ida_mcp::tools::hexrays {
             std::string filename = format_ea(func->start_ea) + "_" + sanitize_filename(func_name) + ".c";
             std::filesystem::path file_path = out_path / filename;
 
+            // Security: Verify the resolved path is still within our output directory
+            // This prevents symlink attacks where filename could escape the directory
+            std::error_code write_ec;
+            auto resolved_file = std::filesystem::weakly_canonical(file_path, write_ec);
+            auto out_path_str = out_path.string();
+            auto resolved_str = resolved_file.string();
+            if (write_ec || resolved_str.compare(0, out_path_str.size(), out_path_str) != 0) {
+                failed_count++;
+                if (failed_functions.size() < 100) {
+                    failed_functions.push_back(json{
+                        {"name", func_name},
+                        {"address", format_ea(func->start_ea)},
+                        {"error", "Path escape attempt detected"}
+                    });
+                }
+                continue;
+            }
+
             // Write to file
-            std::ofstream ofs(file_path);
+            std::ofstream ofs(file_path, std::ios::out | std::ios::trunc);
             if (ofs.is_open()) {
                 ofs << content;
                 ofs.close();

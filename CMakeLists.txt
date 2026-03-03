@@ -5,50 +5,95 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# IDA SDK paths - configurable via environment variables or CMake cache
-# Default paths can be overridden via: -DIDASDK_DIR=/path/to/sdk
-if(NOT IDASDK_DIR AND DEFINED ENV{IDASDK_DIR})
-    set(IDASDK_DIR "$ENV{IDASDK_DIR}" CACHE PATH "IDA SDK directory")
-endif()
-if(NOT IDASDK_DIR)
-    set(IDASDK_DIR "$ENV{HOME}/Downloads/Software/IDAPro/idasdk93" CACHE PATH "IDA SDK directory")
+# =============================================================================
+# IDA SDK Configuration
+# =============================================================================
+# Priority: CMake cache > environment variable > default
+# Override via: cmake -DIDASDK_DIR=/path/to/sdk or IDASDK_DIR=/path/to/sdk cmake ..
+
+# IDA SDK directory
+if(NOT DEFINED IDASDK_DIR)
+    if(DEFINED ENV{IDASDK_DIR})
+        set(IDASDK_DIR "$ENV{IDASDK_DIR}" CACHE PATH "IDA SDK directory")
+    else()
+        set(IDASDK_DIR "$ENV{HOME}/Downloads/Software/IDAPro/idasdk93" CACHE PATH "IDA SDK directory (default)")
+    endif()
 endif()
 
-if(NOT IDA_INSTALL_DIR AND DEFINED ENV{IDA_INSTALL_DIR})
-    set(IDA_INSTALL_DIR "$ENV{IDA_INSTALL_DIR}" CACHE PATH "IDA installation directory")
+# IDA installation directory
+if(NOT DEFINED IDA_INSTALL_DIR)
+    if(DEFINED ENV{IDA_INSTALL_DIR})
+        set(IDA_INSTALL_DIR "$ENV{IDA_INSTALL_DIR}" CACHE PATH "IDA installation directory")
+    else()
+        set(IDA_INSTALL_DIR "$ENV{HOME}/Downloads/Software/IDAPro/ida-pro-9.33" CACHE PATH "IDA installation directory (default)")
+    endif()
 endif()
-if(NOT IDA_INSTALL_DIR)
-    set(IDA_INSTALL_DIR "$ENV{HOME}/Downloads/Software/IDAPro/ida-pro-9.33" CACHE PATH "IDA installation directory")
+
+# Validate SDK directory exists
+if(NOT EXISTS "${IDASDK_DIR}/include")
+    message(WARNING "IDA SDK not found at ${IDASDK_DIR}. Set IDASDK_DIR to your SDK path.")
 endif()
-# Include directories - project headers only (SDK added as SYSTEM below)
+
+# =============================================================================
+# Build Options
+# =============================================================================
+
+# Hex-Rays decompiler support (optional - set OFF if you don't have Hex-Rays license)
+option(WITH_HEXRAYS "Build with Hex-Rays decompiler support" OFF)
+
+# =============================================================================
+# Include Directories
+# =============================================================================
 include_directories(
         ${PROJECT_SOURCE_DIR}/include
 )
 
-# Find required packages
+# =============================================================================
+# Dependencies
+# =============================================================================
 find_package(Boost 1.75 REQUIRED COMPONENTS system thread)
 find_package(nlohmann_json 3.0 REQUIRED)
 
-# Hex-Rays decompiler support (optional)
-option(WITH_HEXRAYS "Build with Hex-Rays decompiler support" ON)
+# =============================================================================
+# Platform Detection and Compiler Flags
+# =============================================================================
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set(IDA_PLATFORM "__LINUX__")
+    set(IDA_LIB_SUBDIR "x64_linux_gcc_64")
+    set(IDA_PLATFORM_LIBS pthread dl)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    set(IDA_PLATFORM "__MAC__")
+    set(IDA_LIB_SUBDIR "x64_mac_clang_64")
+    set(IDA_PLATFORM_LIBS pthread)  # macOS doesn't need -ldl
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+    set(IDA_PLATFORM "__NT__")
+    set(IDA_LIB_SUBDIR "x64_win_vc_64")
+    set(IDA_PLATFORM_LIBS "")
+else()
+    message(FATAL_ERROR "Unsupported platform: ${CMAKE_SYSTEM_NAME}")
+endif()
 
-# Compiler flags
-if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     add_compile_options(-Wall -Wextra -fPIC)
-    # IDA SDK requires platform definitions
-    add_definitions(-D__LINUX__ -D__X64__)
-    if(WITH_HEXRAYS)
-        add_definitions(-DHAS_HEXRAYS)
-    endif()
-endif ()
+endif()
 
-# Link directories for IDA SDK
+# Platform definitions required by IDA SDK
+add_definitions(-D${IDA_PLATFORM} -D__X64__)
+if(WITH_HEXRAYS)
+    add_definitions(-DHAS_HEXRAYS)
+endif()
+
+# =============================================================================
+# Link Directories
+# =============================================================================
 link_directories(
-        ${IDASDK_DIR}/lib/x64_linux_gcc_64
+        ${IDASDK_DIR}/lib/${IDA_LIB_SUBDIR}
         ${IDA_INSTALL_DIR}
 )
 
-# Source files
+# =============================================================================
+# Source Files
+# =============================================================================
 set(HTTP_SOURCES
         src/http/server.cpp
         src/http/auth.cpp
@@ -59,13 +104,13 @@ set(MCP_SOURCES
         src/mcp/server.cpp
 )
 
+# Core tools (always built)
 set(TOOLS_SOURCES
         src/tools/tools.cpp
         src/tools/database.cpp
         src/tools/segments.cpp
         src/tools/functions.cpp
         src/tools/xrefs.cpp
-        src/tools/hexrays.cpp
         src/tools/strings.cpp
         src/tools/search.cpp
         src/tools/instructions.cpp
@@ -103,13 +148,24 @@ set(TOOLS_SOURCES
         src/tools/snippets.cpp
         src/tools/wide_values.cpp
         src/tools/metadata_backup.cpp
-        src/tools/decompile_all.cpp
-        src/tools/microcode.cpp
         src/tools/dirtree_tools.cpp
         src/tools/import_entry.cpp
 )
 
-# Plugin shared library
+# Hex-Rays dependent tools (conditionally built)
+# Note: These files use #ifdef HAS_HEXRAYS internally, but we still need to compile them
+set(HEXRAYS_TOOLS_SOURCES
+        src/tools/hexrays.cpp
+        src/tools/decompile_all.cpp
+        src/tools/microcode.cpp
+)
+
+# Combine all sources
+list(APPEND TOOLS_SOURCES ${HEXRAYS_TOOLS_SOURCES})
+
+# =============================================================================
+# Target Definition
+# =============================================================================
 add_library(ida_mcp_server SHARED
         src/main.cpp
         ${HTTP_SOURCES}
@@ -117,12 +173,20 @@ add_library(ida_mcp_server SHARED
         ${TOOLS_SOURCES}
 )
 
-# Set plugin output name (IDA expects .so on Linux)
+# Set plugin output name (IDA expects specific naming conventions)
 set_target_properties(ida_mcp_server PROPERTIES
         OUTPUT_NAME "ida_mcp_server"
         PREFIX ""  # No 'lib' prefix
-        SUFFIX ".so"  # Force .so extension on Linux
 )
+
+# Platform-specific suffix
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set_target_properties(ida_mcp_server PROPERTIES SUFFIX ".so")
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    set_target_properties(ida_mcp_server PROPERTIES SUFFIX ".dylib")
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+    set_target_properties(ida_mcp_server PROPERTIES SUFFIX ".dll")
+endif()
 
 # IDA SDK includes as SYSTEM to suppress warnings from SDK headers
 target_include_directories(ida_mcp_server SYSTEM PRIVATE
@@ -136,18 +200,26 @@ target_link_libraries(ida_mcp_server
         Boost::system
         Boost::thread
         nlohmann_json::nlohmann_json
-        # IDA SDK libraries
-        ida
-        pthread
-        dl
+        ida  # IDA SDK library
+        ${IDA_PLATFORM_LIBS}
 )
 
-# Installation - install to IDA plugins directory
+# =============================================================================
+# Installation
+# =============================================================================
 install(TARGETS ida_mcp_server
         LIBRARY DESTINATION "${IDA_INSTALL_DIR}/plugins"
 )
 
-# Print configuration
-message(STATUS "IDA SDK directory: ${IDASDK_DIR}")
-message(STATUS "IDA installation: ${IDA_INSTALL_DIR}")
-message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
+# =============================================================================
+# Configuration Summary
+# =============================================================================
+message(STATUS "")
+message(STATUS "=== IDA MCP Server Configuration ===")
+message(STATUS "IDA SDK directory:    ${IDASDK_DIR}")
+message(STATUS "IDA installation:     ${IDA_INSTALL_DIR}")
+message(STATUS "Platform:             ${CMAKE_SYSTEM_NAME} (${IDA_PLATFORM})")
+message(STATUS "Build type:           ${CMAKE_BUILD_TYPE}")
+message(STATUS "Hex-Rays support:     ${WITH_HEXRAYS}")
+message(STATUS "=====================================")
+message(STATUS "")
