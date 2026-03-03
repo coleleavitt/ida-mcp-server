@@ -3,6 +3,9 @@
 #include <chrono>
 #include <cstdlib>
 
+// MCP Protocol Version (2025-11-25 spec)
+constexpr const char* MCP_PROTOCOL_VERSION = "2025-11-25";
+constexpr const char* MCP_PROTOCOL_VERSION_HEADER = "MCP-Protocol-Version";
 namespace ida_mcp::http {
 
     namespace {
@@ -147,6 +150,7 @@ namespace ida_mcp::http {
             res.set(beast::http::field::server, "IDA-MCP-Server/1.0");
             res.set(beast::http::field::content_type, "application/json");
             res.set(beast::http::field::access_control_allow_origin, "*");
+            res.set(MCP_PROTOCOL_VERSION_HEADER, MCP_PROTOCOL_VERSION);
             res.keep_alive(false);  // Disable keep-alive for stability
             res.body() = std::move(body);
             res.prepare_payload();
@@ -157,6 +161,7 @@ namespace ida_mcp::http {
             beast::http::response<beast::http::string_body> res{status, req.version()};
             res.set(beast::http::field::server, "IDA-MCP-Server/1.0");
             res.set(beast::http::field::access_control_allow_origin, "*");
+            res.set(MCP_PROTOCOL_VERSION_HEADER, MCP_PROTOCOL_VERSION);
             res.keep_alive(false);  // Disable keep-alive for stability
             res.prepare_payload();
             return res;
