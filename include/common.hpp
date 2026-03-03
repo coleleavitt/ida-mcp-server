@@ -6,7 +6,8 @@
 #include <memory>
 #include <optional>
 #include <functional>
-
+#include <cerrno>   // For errno
+#include <climits>  // For ULLONG_MAX
 // IDA SDK headers (following idacli.cpp pattern)
 #include <pro.h>
 #include <ida.hpp>
@@ -95,8 +96,10 @@ inline std::optional<ea_t> parse_ea(const std::string& addr_str) {
     }
 
     char* end;
+    errno = 0;  // Reset errno before call
     uint64 addr = strtoull(str, &end, 16);
-    if (end == str || *end != '\0') {
+    // Check for conversion errors: no digits consumed, trailing chars, or overflow
+    if (end == str || *end != '\0' || (errno == ERANGE && addr == ULLONG_MAX)) {
         return std::nullopt;
     }
     return addr;

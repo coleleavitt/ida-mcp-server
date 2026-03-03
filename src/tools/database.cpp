@@ -41,8 +41,8 @@ namespace ida_mcp::tools::database {
         uint32 flags = static_cast<uint32>(-1);
 
         // Check for optional output file path
+        std::string path_storage;  // Local storage for the path string
         if (params.contains("outfile") && !params["outfile"].is_null()) {
-            static std::string path_storage;
             path_storage = params["outfile"].get<std::string>();
             outfile = path_storage.c_str();
         }

@@ -8,7 +8,7 @@ namespace ida_mcp::tools::reg_search {
         json find_register_access_impl(const json &params) {
             std::string regname = params["register"].get<std::string>();
             int limit = params.value("limit", 50);
-
+            if (limit <= 0) limit = 50;  // Prevent negative limit wraparound
             ea_t start_ea = inf_get_min_ea();
             ea_t end_ea = inf_get_max_ea();
 

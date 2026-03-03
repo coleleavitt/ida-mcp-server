@@ -107,10 +107,15 @@ namespace ida_mcp::tools::hexrays {
         std::string output_dir = ".";
         if (params.contains("output_dir") && params["output_dir"].is_string()) {
             output_dir = params["output_dir"].get<std::string>();
+            // Security: reject path traversal attempts
+            if (output_dir.find("..") != std::string::npos) {
+                throw std::runtime_error("Path traversal not allowed in output_dir");
+            }
         }
 
         // Create output directory if it doesn't exist
         std::filesystem::path out_path(output_dir);
+        out_path = std::filesystem::weakly_canonical(out_path);
         if (!std::filesystem::exists(out_path)) {
             std::filesystem::create_directories(out_path);
         }

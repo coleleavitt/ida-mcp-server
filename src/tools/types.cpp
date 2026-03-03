@@ -473,8 +473,8 @@ namespace ida_mcp::tools::types {
                 };
             }
 
-            tlc_desc_result_t result;
-            memset(&result, 0, sizeof(result));
+            tlc_desc_result_t result{};
+            memset(result.pad, 0, sizeof(result.pad));
             describe_tlc_ordinal(&result, ti, ordinal, 0, 0, 0, 0);
 
             tinfo_t tif;
@@ -512,8 +512,8 @@ namespace ida_mcp::tools::types {
 
             json entries = json::array();
             for (uint32 ord = start; ord < ord_limit && entries.size() < count; ord++) {
-                tlc_desc_result_t result;
-                memset(&result, 0, sizeof(result));
+                tlc_desc_result_t result{};
+                memset(result.pad, 0, sizeof(result.pad));
                 describe_tlc_ordinal(&result, ti, ord, 0, 0, 0, 0);
 
                 if (result.desc.empty()) continue;

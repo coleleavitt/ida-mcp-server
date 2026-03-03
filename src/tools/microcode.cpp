@@ -129,6 +129,10 @@ namespace ida_mcp::tools::microcode {
                 throw std::runtime_error(std::string("Microcode generation failed: ") + err.c_str());
             }
 
+            // Use unique_ptr with custom deleter to ensure mba is deleted even if an exception is thrown
+            auto mba_deleter = [](mba_t *p) { delete p; };
+            std::unique_ptr<mba_t, decltype(mba_deleter)> mba_guard(mba, mba_deleter);
+
             json blocks = json::array();
             int total_insns = 0;
             bool truncated = false;
@@ -176,7 +180,7 @@ namespace ida_mcp::tools::microcode {
             result["truncated"] = truncated;
             result["blocks"] = blocks;
 
-            delete mba;
+            // mba_guard will automatically delete mba when scope exits
             return result;
         }
 #endif

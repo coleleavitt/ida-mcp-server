@@ -43,7 +43,9 @@ namespace ida_mcp::tools::exec_scripts {
             }
         }
 
-        // Evaluate expression using current language (Python/IDC)
+        // Evaluate expression using IDC interpreter
+        // Note: Despite the generic name, this uses eval_idc_expr which only supports IDC.
+        // For Python support, use IDAPython's run_python_statement() via a separate tool.
         json handle_eval_expr(const json &params) {
             std::string expression = params["expression"].get<std::string>();
             ea_t ea = BADADDR;
@@ -58,7 +60,7 @@ namespace ida_mcp::tools::exec_scripts {
                 }
             }
 
-            // Evaluate the expression
+            // Evaluate the expression using IDC interpreter
             idc_value_t result;
             qstring err_msg;
 
@@ -68,43 +70,8 @@ namespace ida_mcp::tools::exec_scripts {
                 return json{
                     {"success", false},
                     {"error", err_msg.c_str()},
-                    {"expression", expression}
-                };
-            }
-
-            return json{
-                {"success", true},
-                {"expression", expression},
-                {"result", idc_value_to_json(result)}
-            };
-        }
-
-        // Evaluate IDC expression (forces IDC)
-        json handle_eval_idc(const json &params) {
-            std::string expression = params["expression"].get<std::string>();
-            ea_t ea = BADADDR;
-
-            if (params.contains("address") && !params["address"].is_null()) {
-                std::string addr_str = params["address"].get<std::string>();
-                if (addr_str != "0") {
-                    auto addr_opt = parse_ea(addr_str);
-                    if (addr_opt.has_value()) {
-                        ea = addr_opt.value();
-                    }
-                }
-            }
-
-            // Evaluate as IDC expression
-            idc_value_t result;
-            qstring err_msg;
-
-            bool success = eval_idc_expr(&result, ea, expression.c_str(), &err_msg);
-
-            if (!success) {
-                return json{
-                    {"success", false},
-                    {"error", err_msg.c_str()},
-                    {"expression", expression}
+                    {"expression", expression},
+                    {"language", "idc"}
                 };
             }
 
@@ -114,6 +81,12 @@ namespace ida_mcp::tools::exec_scripts {
                 {"result", idc_value_to_json(result)},
                 {"language", "idc"}
             };
+        }
+
+        // Alias for handle_eval_expr - kept for API compatibility
+        // Both tools use the same IDC interpreter underneath
+        json handle_eval_idc(const json &params) {
+            return handle_eval_expr(params);
         }
 
         // Execute IDC code snippet

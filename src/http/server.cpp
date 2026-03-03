@@ -1,8 +1,41 @@
 #include "http/server.hpp"
 #include <iostream>
 #include <chrono>
+#include <cstdlib>
 
 namespace ida_mcp::http {
+
+    namespace {
+        // Get optional API key from environment
+        std::string get_api_key() {
+            const char* key = std::getenv("IDA_MCP_API_KEY");
+            return key ? std::string(key) : std::string();
+        }
+
+        // Validate bearer token from Authorization header
+        bool validate_auth(const beast::http::request<beast::http::string_body>& req,
+                          const std::string& expected_key) {
+            if (expected_key.empty()) {
+                return true;  // No auth configured
+            }
+
+            auto it = req.find(beast::http::field::authorization);
+            if (it == req.end()) {
+                return false;
+            }
+
+            std::string auth_header(it->value());
+            const std::string bearer_prefix = "Bearer ";
+            if (auth_header.size() <= bearer_prefix.size() ||
+                auth_header.compare(0, bearer_prefix.size(), bearer_prefix) != 0) {
+                return false;
+            }
+
+            std::string token = auth_header.substr(bearer_prefix.size());
+            return token == expected_key;
+        }
+    } // anonymous namespace
+
     HttpServer::HttpServer(const std::string &address, uint16_t port, mcp::McpServer &mcp_server)
         : address_(address)
           , port_(port)
@@ -45,16 +78,18 @@ namespace ida_mcp::http {
                     if (!running_.load())
                         break;
 
+                    // Add entry to list BEFORE starting thread to avoid race
                     auto entry = std::make_shared<SessionEntry>();
+                    {
+                        std::lock_guard<std::mutex> lock(sessions_mutex_);
+                        reap_finished_sessions();
+                        sessions_.push_back(entry);
+                    }
 
                     entry->thread = std::thread([this, s = std::move(socket), entry]() mutable {
                         handle_session(std::move(s));
                         entry->finished.store(true);
-                    }); {
-                        std::lock_guard<std::mutex> lock(sessions_mutex_);
-                        reap_finished_sessions();
-                        sessions_.push_back(std::move(entry));
-                    }
+                    });
                 } catch (const boost::system::system_error &e) {
                     if (e.code() == boost::asio::error::operation_aborted ||
                         e.code() == boost::asio::error::bad_descriptor) {
@@ -112,7 +147,7 @@ namespace ida_mcp::http {
             res.set(beast::http::field::server, "IDA-MCP-Server/1.0");
             res.set(beast::http::field::content_type, "application/json");
             res.set(beast::http::field::access_control_allow_origin, "*");
-            res.keep_alive(req.keep_alive());
+            res.keep_alive(false);  // Disable keep-alive for stability
             res.body() = std::move(body);
             res.prepare_payload();
             return res;
@@ -122,7 +157,7 @@ namespace ida_mcp::http {
             beast::http::response<beast::http::string_body> res{status, req.version()};
             res.set(beast::http::field::server, "IDA-MCP-Server/1.0");
             res.set(beast::http::field::access_control_allow_origin, "*");
-            res.keep_alive(req.keep_alive());
+            res.keep_alive(false);  // Disable keep-alive for stability
             res.prepare_payload();
             return res;
         };
@@ -146,6 +181,13 @@ namespace ida_mcp::http {
         if (req.target() != "/mcp" && req.target() != "/") {
             return make_response(beast::http::status::not_found,
                                  R"({"error":"Not found"})");
+        }
+
+        // Authentication check (if IDA_MCP_API_KEY is set)
+        static const std::string api_key = get_api_key();
+        if (!validate_auth(req, api_key)) {
+            return make_response(beast::http::status::unauthorized,
+                                 R"({"error":"Unauthorized: Invalid or missing API key"})");
         }
 
         try {

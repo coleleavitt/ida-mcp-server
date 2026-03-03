@@ -35,7 +35,7 @@ namespace ida_mcp::mcp {
             return McpResponse::notification_accepted();
         }
 
-        int64_t request_id = request.id.value();
+        json request_id = request.id.value();
 
         try {
             json result;
@@ -93,15 +93,18 @@ namespace ida_mcp::mcp {
         std::string tool_name = params["name"];
         json tool_params = params.contains("arguments") ? params["arguments"] : json::object();
 
-        // Find and call tool
-        std::lock_guard<std::mutex> lock(mutex_);
-        auto it = tools_.find(tool_name);
-        if (it == tools_.end()) {
-            throw std::runtime_error("Tool not found: " + tool_name);
+        // Find tool and copy handler (release lock before blocking call)
+        ToolHandler handler;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            auto it = tools_.find(tool_name);
+            if (it == tools_.end()) {
+                throw std::runtime_error("Tool not found: " + tool_name);
+            }
+            handler = it->second.handler;
         }
 
         // Call tool handler on IDA's main thread (required for thread safety)
-        auto handler = it->second.handler;
         json tool_result = ida_mcp::execute_on_main_thread([&]() {
             return handler(tool_params);
         });

@@ -158,10 +158,17 @@ namespace ida_mcp::tools::instructions {
                 {"operands", operands}
             };
 
-            // Add ARM64-specific instruction classification
+            // Add ARM64-specific instruction classification (only for ARM processors)
+            qstring procname = inf_get_procname();
+            bool is_arm = procname.find("ARM") != qstring::npos ||
+                          procname.find("arm") != qstring::npos ||
+                          procname.find("AARCH64") != qstring::npos ||
+                          procname.find("aarch64") != qstring::npos;
+
             json arm64_info = json::object();
             bool has_arm64_info = false;
 
+            if (is_arm) {
             // Check for PAC instructions
             if (is_pac_instruction(insn)) {
                 int pac_flags = insn.insnpref; // pac_flags is mapped to insnpref
@@ -208,7 +215,9 @@ namespace ida_mcp::tools::instructions {
                 has_arm64_info = true;
             }
 
-            if (has_arm64_info) {
+            } // end if (is_arm)
+
+            if (is_arm && has_arm64_info) {
                 result["arm64"] = arm64_info;
             }
 

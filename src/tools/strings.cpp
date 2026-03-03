@@ -73,9 +73,9 @@ namespace ida_mcp::tools::strings {
             ea_t ea = si.ea;
             if (ea == BADADDR) continue;
 
-            // Get string content
+            // Get string content using the actual string type from string_info_t
             qstring str_content;
-            ssize_t len = get_strlit_contents(&str_content, ea, -1, STRTYPE_C);
+            ssize_t len = get_strlit_contents(&str_content, ea, -1, si.type);
             if (len <= 0) continue;
 
             std::string content = str_content.c_str();

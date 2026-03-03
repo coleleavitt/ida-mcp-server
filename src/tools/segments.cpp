@@ -66,6 +66,8 @@ namespace ida_mcp::tools::segments {
             // Try to find matching sections by checking if subsegments exist
             for (const auto *patterns: {objc_sections, swift_sections}) {
                 for (int i = 0; patterns[i].segment != nullptr; i++) {
+                    // Use exact match for segment name comparison, not substring
+                    if (seg_name_str == patterns[i].segment) {
                     if (seg_name_str.find(patterns[i].segment) != std::string::npos) {
                         // Try to find this section name as a segment
                         qstring section_fullname;

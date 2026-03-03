@@ -5,10 +5,21 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# IDA SDK 9.3 paths (based on 9.2 SDK with 9.3 stubs)
-set(IDASDK_DIR "$ENV{HOME}/Downloads/Software/IDAPro/idasdk93" CACHE PATH "IDA SDK directory")
-set(IDA_INSTALL_DIR "$ENV{HOME}/Downloads/Software/IDAPro/ida-pro-9.33" CACHE PATH "IDA installation directory")
+# IDA SDK paths - configurable via environment variables or CMake cache
+# Default paths can be overridden via: -DIDASDK_DIR=/path/to/sdk
+if(NOT IDASDK_DIR AND DEFINED ENV{IDASDK_DIR})
+    set(IDASDK_DIR "$ENV{IDASDK_DIR}" CACHE PATH "IDA SDK directory")
+endif()
+if(NOT IDASDK_DIR)
+    set(IDASDK_DIR "$ENV{HOME}/Downloads/Software/IDAPro/idasdk93" CACHE PATH "IDA SDK directory")
+endif()
 
+if(NOT IDA_INSTALL_DIR AND DEFINED ENV{IDA_INSTALL_DIR})
+    set(IDA_INSTALL_DIR "$ENV{IDA_INSTALL_DIR}" CACHE PATH "IDA installation directory")
+endif()
+if(NOT IDA_INSTALL_DIR)
+    set(IDA_INSTALL_DIR "$ENV{HOME}/Downloads/Software/IDAPro/ida-pro-9.33" CACHE PATH "IDA installation directory")
+endif()
 # Include directories - project headers only (SDK added as SYSTEM below)
 include_directories(
         ${PROJECT_SOURCE_DIR}/include
@@ -18,11 +29,17 @@ include_directories(
 find_package(Boost 1.75 REQUIRED COMPONENTS system thread)
 find_package(nlohmann_json 3.0 REQUIRED)
 
+# Hex-Rays decompiler support (optional)
+option(WITH_HEXRAYS "Build with Hex-Rays decompiler support" ON)
+
 # Compiler flags
 if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     add_compile_options(-Wall -Wextra -fPIC)
-    # IDA SDK requires these
-    add_definitions(-D__LINUX__ -D__X64__ -DHAS_HEXRAYS)
+    # IDA SDK requires platform definitions
+    add_definitions(-D__LINUX__ -D__X64__)
+    if(WITH_HEXRAYS)
+        add_definitions(-DHAS_HEXRAYS)
+    endif()
 endif ()
 
 # Link directories for IDA SDK

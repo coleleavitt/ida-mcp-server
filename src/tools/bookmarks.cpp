@@ -33,7 +33,7 @@ namespace ida_mcp::tools::bookmarks {
             }
 
             return json{
-                {"count", count},
+                {"count", results.size()},  // Use actual count of successfully retrieved bookmarks
                 {"bookmarks", results}
             };
         }

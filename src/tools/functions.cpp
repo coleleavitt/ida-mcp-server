@@ -178,7 +178,11 @@ namespace ida_mcp::tools::functions {
                 json tails = json::array();
                 int tail_count = 0;
 
-                for (bool ok = fti.first(); ok; ok = fti.next()) {
+                // func_tail_iterator_t.first() returns the main function body first,
+                // then subsequent calls to next() return the actual tail chunks.
+                // Skip the first chunk (main function body) to only get tails.
+                bool ok = fti.first();
+                while (ok && (ok = fti.next())) {
                     const range_t &tail_range = fti.chunk();
                     tails.push_back(json{
                         {"start", format_ea(tail_range.start_ea)},

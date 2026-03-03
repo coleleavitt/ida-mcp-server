@@ -59,8 +59,11 @@ namespace ida_mcp::tools::indirect_branches {
                         ea_t case_ea = BADADDR;
                         if (si.get_jtable_element_size() == 4) {
                             uint32 offset = get_dword(target);
-                            if (offset != BADADDR) {
-                                case_ea = si.jumps + offset;
+                            // For 32-bit entries, check against 32-bit max (not 64-bit BADADDR)
+                            if (offset != 0xFFFFFFFF) {
+                                // Check if this is a relative or absolute offset
+                                // Many jump tables use relative offsets from table base
+                                case_ea = si.elbase + static_cast<int32>(offset);
                             }
                         } else if (si.get_jtable_element_size() == 8) {
                             uint64 offset = get_qword(target);

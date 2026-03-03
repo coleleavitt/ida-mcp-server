@@ -91,9 +91,21 @@ namespace ida_mcp::tools::names {
                 }
             }
 
-            // Check if name is auto-generated
+            // Check if name is auto-generated (IDA-generated names)
             if (!is_auto_generated) {
-                is_auto_generated = (name.rfind("sub_", 0) == 0 || name.rfind("loc_", 0) == 0);
+                // IDA generates various auto-names with these prefixes
+                is_auto_generated = (name.rfind("sub_", 0) == 0 ||
+                                     name.rfind("loc_", 0) == 0 ||
+                                     name.rfind("off_", 0) == 0 ||
+                                     name.rfind("dword_", 0) == 0 ||
+                                     name.rfind("qword_", 0) == 0 ||
+                                     name.rfind("word_", 0) == 0 ||
+                                     name.rfind("byte_", 0) == 0 ||
+                                     name.rfind("unk_", 0) == 0 ||
+                                     name.rfind("stru_", 0) == 0 ||
+                                     name.rfind("asc_", 0) == 0 ||
+                                     name.rfind("flt_", 0) == 0 ||
+                                     name.rfind("dbl_", 0) == 0);
             }
 
             return json{

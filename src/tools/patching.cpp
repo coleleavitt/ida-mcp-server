@@ -110,12 +110,22 @@ namespace ida_mcp::tools::patching {
                 throw std::runtime_error("Empty byte array");
             }
 
+            // patch_bytes doesn't return success/failure - verify by reading back
             patch_bytes(ea, bytes.data(), bytes.size());
+
+            // Verify the patch was applied correctly
+            bool success = true;
+            for (size_t i = 0; i < bytes.size(); i++) {
+                if (get_byte(ea + i) != bytes[i]) {
+                    success = false;
+                    break;
+                }
+            }
 
             return json{
                 {"address", format_ea(ea)},
                 {"size", bytes.size()},
-                {"success", true}
+                {"success", success}
             };
         }
 

@@ -20,7 +20,7 @@ enum class MessageType {
 // MCP request/response structures
 struct McpRequest {
     std::string jsonrpc;
-    std::optional<int64_t> id;
+    std::optional<json> id;  // Can be int64_t or string per JSON-RPC 2.0 spec
     std::string method;
     json params;
 
@@ -29,7 +29,7 @@ struct McpRequest {
 
 struct McpResponse {
     std::string jsonrpc = "2.0";
-    std::optional<int64_t> id;
+    std::optional<json> id;  // Can be int64_t or string per JSON-RPC 2.0 spec
     std::optional<json> result;
     std::optional<json> error_data;  // Renamed from 'error' to avoid IDA SDK macro conflict
     bool is_notification = false;     // True when the request was a notification (no response needed)
@@ -37,9 +37,9 @@ struct McpResponse {
     json to_json() const;
 
     // Helper to create success response
-    static McpResponse success(int64_t id, json result) {
+    static McpResponse success(json id, json result) {
         McpResponse resp;
-        resp.id = id;
+        resp.id = std::move(id);
         resp.result = std::move(result);
         return resp;
     }
@@ -52,9 +52,9 @@ struct McpResponse {
     }
 
     // Helper to create error response
-    static McpResponse make_error(int64_t id, int code, std::string message) {
+    static McpResponse make_error(json id, int code, std::string message) {
         McpResponse resp;
-        resp.id = id;
+        resp.id = std::move(id);
         resp.error_data = json{
             {"code", code},
             {"message", std::move(message)}

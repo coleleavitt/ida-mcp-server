@@ -71,9 +71,10 @@ namespace ida_mcp::tools::symbols {
                 throw std::runtime_error("Start address must be less than end address");
             }
 
-            size_t limit = params.contains("limit") && !params["limit"].is_null()
-                               ? params["limit"].get<size_t>()
+            int64_t limit_raw = params.contains("limit") && !params["limit"].is_null()
+                               ? params["limit"].get<int64_t>()
                                : 1000;
+            size_t limit = (limit_raw <= 0) ? 1000 : static_cast<size_t>(limit_raw);
 
             json names = json::array();
             size_t count = 0;

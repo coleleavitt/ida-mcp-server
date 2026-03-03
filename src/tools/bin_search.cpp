@@ -7,7 +7,7 @@ namespace ida_mcp::tools::bin_search {
         json search_binary_pattern_impl(const json &params) {
             std::string pattern_str = params["pattern"].get<std::string>();
             int limit = params.value("limit", 100);
-
+            if (limit <= 0) limit = 100;  // Prevent negative limit wraparound
             ea_t start_ea = inf_get_min_ea();
             ea_t end_ea = inf_get_max_ea();
 

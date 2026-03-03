@@ -89,7 +89,9 @@ namespace ida_mcp::tools::snippets {
                         qstring s(arg.get<std::string>().c_str());
                         val.set_string(s);
                     } else if (arg.is_number_float()) {
-                        val.set_long(static_cast<sval_t>(arg.get<double>()));
+                        // Properly handle floating-point values
+                        double fval = arg.get<double>();
+                        val.set_float(fval);
                     } else {
                         val.set_long(0);
                     }

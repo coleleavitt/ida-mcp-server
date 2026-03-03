@@ -59,6 +59,11 @@ bool idaapi mcp_plugin_t::run(size_t arg) {
         if (server_thread && server_thread->joinable()) {
             server_thread->join();
         }
+        // Reset in correct order: http_server holds reference to mcp_server,
+        // so http_server must be destroyed first
+        http_server.reset();
+        server_thread.reset();
+        mcp_server.reset();
         server_running = false;
         msg("MCP Server: Stopped\n");
         return true;

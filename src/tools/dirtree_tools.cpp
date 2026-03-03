@@ -123,10 +123,10 @@ namespace ida_mcp::tools::dirtree_tools {
                 throw std::runtime_error("Missing required parameter: path");
 
             dirtree_t *dt = resolve_tree(params["tree"].get<std::string>());
-            const char *p = params["path"].get<std::string>().c_str();
+            std::string path_str = params["path"].get<std::string>();
             bool do_unlink = params.contains("unlink") && params["unlink"].is_boolean() && params["unlink"].get<bool>();
 
-            dterr_t err = do_unlink ? dt->unlink(p) : dt->link(p);
+            dterr_t err = do_unlink ? dt->unlink(path_str.c_str()) : dt->link(path_str.c_str());
             if (err != DTE_OK)
                 throw std::runtime_error(std::string("link/unlink failed: ") + dirtree_t::errstr(err));
 
