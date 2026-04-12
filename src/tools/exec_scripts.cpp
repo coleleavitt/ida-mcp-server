@@ -179,6 +179,62 @@ namespace ida_mcp::tools::exec_scripts {
                 {"result", idc_value_to_json(result)}
             };
         }
+        json handle_run_python(const json &params) {
+            std::string code = params["code"].get<std::string>();
+
+            extlang_object_t python = find_extlang_by_name("Python");
+            if (python == nullptr)
+                throw std::runtime_error("Python extlang not available (IDAPython not loaded)");
+
+            qstring errbuf;
+
+            bool ok = python->eval_snippet(code.c_str(), &errbuf);
+
+            if (!ok) {
+                return json{
+                    {"success", false},
+                    {"error", errbuf.c_str()},
+                    {"code", code},
+                    {"language", "python"}
+                };
+            }
+
+            return json{
+                {"success", true},
+                {"code", code},
+                {"language", "python"}
+            };
+        }
+
+        json handle_run_python_expr(const json &params) {
+            std::string expression = params["expression"].get<std::string>();
+
+            extlang_object_t python = find_extlang_by_name("Python");
+            if (python == nullptr)
+                throw std::runtime_error("Python extlang not available (IDAPython not loaded)");
+
+            idc_value_t result;
+            qstring errbuf;
+
+            bool ok = python->eval_expr(&result, BADADDR, expression.c_str(), &errbuf);
+
+            if (!ok) {
+                return json{
+                    {"success", false},
+                    {"error", errbuf.c_str()},
+                    {"expression", expression},
+                    {"language", "python"}
+                };
+            }
+
+            return json{
+                {"success", true},
+                {"expression", expression},
+                {"result", idc_value_to_json(result)},
+                {"language", "python"}
+            };
+        }
+
     } // anonymous namespace
 
     void register_tools(mcp::McpServer &server) {
@@ -289,6 +345,40 @@ namespace ida_mcp::tools::exec_scripts {
                 {"required", json::array({"code"})}
             };
             server.register_tool(def, handle_compile_idc);
+        }
+
+        // run_python
+        {
+            mcp::ToolDefinition def;
+            def.name = "run_python";
+            def.description =
+                "Execute Python code via IDAPython. Has full access to ida_*, idautils, idc, "
+                "ida_hexrays, ida_nalt, etc. Use print() to return output.";
+            def.input_schema = json{
+                {"type", "object"},
+                {"properties", {
+                    {"code", {{"type", "string"}, {"description", "Python code to execute"}}}
+                }},
+                {"required", json::array({"code"})}
+            };
+            server.register_tool(def, handle_run_python);
+        }
+
+        // run_python_expr
+        {
+            mcp::ToolDefinition def;
+            def.name = "run_python_expr";
+            def.description =
+                "Evaluate a Python expression and return the result. "
+                "For statements/multi-line code, use run_python instead.";
+            def.input_schema = json{
+                {"type", "object"},
+                {"properties", {
+                    {"expression", {{"type", "string"}, {"description", "Python expression"}}}
+                }},
+                {"required", json::array({"expression"})}
+            };
+            server.register_tool(def, handle_run_python_expr);
         }
 
         // call_idc_func
