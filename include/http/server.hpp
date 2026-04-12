@@ -15,7 +15,10 @@ public:
     HttpServer(const std::string& address, uint16_t port, mcp::McpServer& mcp_server);
     ~HttpServer();
 
-    // Start the server (blocking)
+    // Bind the listening socket (call from main thread — throws on failure)
+    void bind();
+
+    // Accept loop (blocking — call from background thread after bind())
     void run();
 
     // Stop the server — waits for all in-flight sessions to finish

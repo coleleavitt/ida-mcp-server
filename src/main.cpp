@@ -73,7 +73,7 @@ bool idaapi mcp_plugin_t::run(size_t arg) {
     try {
         // Get configuration from user or use defaults
         const char *bind_addr = "127.0.0.1";
-        uint16_t port = 8080;
+        uint16_t port = 7777;
 
         // Create MCP server
         mcp_server = std::make_unique<mcp::McpServer>();
@@ -85,11 +85,12 @@ bool idaapi mcp_plugin_t::run(size_t arg) {
         auto tool_list = mcp_server->get_tools();
         msg("MCP Server: Registered %zu tools\n", tool_list.size());
 
-        // Create HTTP server
+        // Create and bind HTTP server (bind on main thread so failures are caught here)
         msg("MCP Server: Starting HTTP server on %s:%d\n", bind_addr, port);
         http_server = std::make_unique<ida_mcp::http::HttpServer>(bind_addr, port, *mcp_server);
+        http_server->bind();
 
-        // Run server in background thread
+        // Accept loop in background thread
         server_thread = std::make_unique<std::thread>([this]() {
             http_server->run();
         });

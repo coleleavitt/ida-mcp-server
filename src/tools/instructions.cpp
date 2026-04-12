@@ -250,13 +250,14 @@ namespace ida_mcp::tools::instructions {
             }
 
             // Generate disassembly line
-            qstring disasm;
+            qstring disasm, clean_disasm;
             generate_disasm_line(&disasm, ea, GENDSM_FORCE_CODE);
+            tag_remove(&clean_disasm, disasm);
 
             return json{
                 {"address", format_ea(ea)},
                 {"mnemonic", mnem.c_str()},
-                {"disassembly", disasm.c_str()},
+                {"disassembly", clean_disasm.c_str()},
                 {"size", insn.size}
             };
         }

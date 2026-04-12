@@ -179,7 +179,7 @@ namespace ida_mcp::tools::snippets {
                         {
                             "args", {
                                 {"type", "array"}, {"description", "Arguments to pass (integers, strings, or floats)"},
-                                {"items", {}}
+                                {"items", {{"type", "string"}}}
                             }
                         }
                     }

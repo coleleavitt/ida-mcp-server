@@ -63,49 +63,47 @@ namespace ida_mcp::http {
             sessions_.end());
     }
 
+    void HttpServer::bind() {
+        auto const address = net::ip::make_address(address_);
+
+        acceptor_ = std::make_unique<tcp::acceptor>(io_context_);
+        acceptor_->open(tcp::v4());
+        acceptor_->set_option(net::socket_base::reuse_address(true));
+        acceptor_->bind(tcp::endpoint{address, port_});
+        acceptor_->listen(net::socket_base::max_listen_connections);
+    }
+
     void HttpServer::run() {
-        try {
-            auto const address = net::ip::make_address(address_);
-            acceptor_ = std::make_unique<tcp::acceptor>(
-                io_context_,
-                tcp::endpoint{address, port_}
-            );
+        running_.store(true);
 
-            running_.store(true);
+        while (running_.load()) {
+            try {
+                tcp::socket socket{io_context_};
+                acceptor_->accept(socket);
 
-            while (running_.load()) {
-                try {
-                    tcp::socket socket{io_context_};
-                    acceptor_->accept(socket);
+                if (!running_.load())
+                    break;
 
-                    if (!running_.load())
-                        break;
-
-                    // Add entry to list BEFORE starting thread to avoid race
-                    auto entry = std::make_shared<SessionEntry>();
-                    {
-                        std::lock_guard<std::mutex> lock(sessions_mutex_);
-                        reap_finished_sessions();
-                        sessions_.push_back(entry);
-                    }
-
-                    entry->thread = std::thread([this, s = std::move(socket), entry]() mutable {
-                        handle_session(std::move(s));
-                        entry->finished.store(true);
-                    });
-                } catch (const boost::system::system_error &e) {
-                    if (e.code() == boost::asio::error::operation_aborted ||
-                        e.code() == boost::asio::error::bad_descriptor) {
-                        break;
-                    }
-                    if (!running_.load())
-                        break;
-                    throw;
+                auto entry = std::make_shared<SessionEntry>();
+                {
+                    std::lock_guard<std::mutex> lock(sessions_mutex_);
+                    reap_finished_sessions();
+                    sessions_.push_back(entry);
                 }
+
+                entry->thread = std::thread([this, s = std::move(socket), entry]() mutable {
+                    handle_session(std::move(s));
+                    entry->finished.store(true);
+                });
+            } catch (const boost::system::system_error &e) {
+                if (e.code() == boost::asio::error::operation_aborted ||
+                    e.code() == boost::asio::error::bad_descriptor) {
+                    break;
+                }
+                if (!running_.load())
+                    break;
+                std::cerr << "HTTP server accept error: " << e.what() << std::endl;
             }
-        } catch (const std::exception &e) {
-            std::cerr << "HTTP server error: " << e.what() << std::endl;
-            throw;
         }
     }
 

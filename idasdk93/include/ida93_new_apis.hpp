@@ -363,4 +363,347 @@ idaman uint64 ida_export calc_func_metadata(
     func_t *func,
     void *callback);
 
+// =====================================================================
+// UNDOCUMENTED INTERNAL APIs - Reverse-engineered from libida.so
+// These are exported symbols with NO SDK declaration.
+// Signatures verified via Hex-Rays decompilation of IDA 9.33 binary.
+// =====================================================================
+
+// ---- HTTP / Network ----
+
+// http_request @ libida.so
+// Makes an HTTP request using IDA's built-in HTTP client.
+// Takes a config struct (~96+ bytes) with URL, method, headers, body, etc.
+// Returns 0 on success, non-zero on error.
+// Usage: IDA calls this for Lumina queries and update checks.
+// Signature: int http_request(void *config)
+// WARNING: Config struct layout is internal and may change between versions.
+
+// http_get_file @ libida.so
+// Downloads a file via HTTP.
+// Wrapper around http_request for simple GET-to-file operations.
+
+// upload_idb @ libida.so
+// Uploads IDB to Lumina/vault server.
+// upload_idb(char *path, const char *name, const char *version, ...)
+// 10 arguments total - complex internal struct.
+
+// ---- License Manager ----
+
+// get_license_manager @ libida.so+0x395BB0
+// Returns pointer to license manager singleton (vtable-based object).
+// License manager layout:
+//   +0:   vtable pointer
+//   +176: license data pointer (void*)
+//   +184: license data size (size_t)
+// Vtable methods:
+//   [6]  (offset 48): method(self, qstring *out, int flags) - get license info
+//   [11] (offset 88): method(self, int, int) - query license state
+// Signature: void* get_license_manager(void)
+
+// get_borrowed_license @ libida.so+0x8A27C0
+// Gets borrowed license information.
+
+// get_mac_addresses @ libida.so+0x835840
+// Gets MAC addresses of network interfaces (for license binding).
+// Signature: void get_mac_addresses(qstrvec_t *out)
+
+// ---- Process Execution ----
+
+// launch_process @ libida.so+0x840E80
+// Launches an external process.
+// Takes a launch_process_params_t struct (80 bytes, 5 x __m128i).
+// Signature: int launch_process(const launch_process_params_t *params)
+
+// capture_process_output @ libida.so+0x841F90
+// Captures stdout/stderr from a child process.
+// Signature: int capture_process_output(const char *cmdline, qstring *out, qstring *err, int timeout_ms)
+
+// ---- Formatting ----
+
+// format_c_number @ libida.so+0x838180
+// Formats a number in C-style notation (hex with 0x prefix, decimal, etc.).
+// format_c_number(char *buf, size_t bufsize, uint64 value, int64 sign_extend, int value_size, int radix)
+// value_size: 1/2/4/8 bytes
+// radix: typically from get_radix() or hardcoded 16
+idaman void ida_export format_c_number(
+    char *buf,
+    size_t bufsize,
+    uint64 value,
+    int64 sign_extend,
+    int value_size,
+    int radix);
+
+// ---- Metadata Diffing ----
+
+// score_metadata @ libida.so+0x7F9450
+// Scores the quality of function metadata (higher = better).
+// Used by Lumina to rank analysis results.
+// Signature: int score_metadata(const void *metadata)
+
+// diff_metadata @ libida.so+0x7F94E0
+// Diffs two metadata blobs and returns the differences.
+// Used by merge/teams for conflict resolution.
+// Signature: int diff_metadata(const void *md1, const void *md2, void *result)
+
+// extract_type_from_metadata @ libida.so+0x7E21F0
+// Extracts type information from a metadata blob.
+// Signature: bool extract_type_from_metadata(tinfo_t *out, const void *metadata)
+
+// extract_insn_cmts_from_metadata @ libida.so+0x7E22C0
+// Extracts instruction comments from a metadata blob.
+// Signature: bool extract_insn_cmts_from_metadata(void *out, const void *metadata)
+
+// extract_frame_desc_from_metadata @ libida.so
+// Extracts stack frame description from metadata.
+
+// extract_user_stkpnts_from_metadata @ libida.so
+// Extracts user-defined stack change points from metadata.
+
+// ---- Undo System ----
+
+// cancel_undo_point @ libida.so+0x57E370
+// Cancels the most recent undo point (rollback without recording).
+// Signature: void cancel_undo_point(void)
+
+// get_undo_state @ libida.so+0x57F1D0
+// Returns current undo state.
+// 0 = no undo available, non-zero = undo available.
+// Signature: int get_undo_state(void)
+
+// ---- Misc Utilities ----
+
+// get_available_core_count @ libida.so+0x83EED0
+// Returns number of available CPU cores (respects cgroup/affinity).
+// Signature: int get_available_core_count(void)
+
+// get_logical_core_count @ libida.so+0x83EEC0
+// Returns number of logical CPU cores.
+// Signature: int get_logical_core_count(void)
+
+// get_physical_core_count @ libida.so+0x83EEB0
+// Returns number of physical CPU cores.
+// Signature: int get_physical_core_count(void)
+
+// is_main_thread @ libida.so+0x840350
+// Returns true if called from the main thread.
+// Signature: bool is_main_thread(void)
+
+// is_cvt64 @ libida.so+0x832D40
+// Returns true if the database is being converted from 32-bit to 64-bit.
+// Signature: bool is_cvt64(void)
+
+// sanitize_file_name @ libida.so+0x83BC60
+// Sanitizes a filename by replacing invalid characters.
+// Signature: void sanitize_file_name(char *fname, size_t bufsize)
+
+// gen_rand_buf @ libida.so+0x83E790
+// Fills buffer with cryptographically random bytes.
+// Signature: void gen_rand_buf(void *buf, size_t size)
+
+// get_login_name @ libida.so+0x83EBD0
+// Gets the current user's login name.
+// Signature: const char* get_login_name(void)
+
+// get_file_ext @ libida.so+0x832D60
+// Returns pointer to file extension in a path string (after last '.').
+// Signature: const char* get_file_ext(const char *path)
+
+// ---- TIL/Type Library Internal ----
+
+// filter_tlc @ libida.so+0x55E760
+// Filters type library container entries.
+
+// describe_tlc_ordinal @ libida.so+0x55F7B0
+// Describes a type library ordinal (returns human-readable info).
+
+// get_snippet_api @ libida.so+0x51F9F0
+// Returns the snippet execution API singleton.
+// Used for running IDC/Python snippets programmatically.
+
+// dump_tinfo_stats @ libida.so+0x5326A0
+// Dumps type info statistics to the output window.
+
+// get_strlist_api @ libida.so+0x68E060
+// Returns the string list API singleton.
+// Provides efficient access to the string list without rebuilding.
+
+// get_current_config @ libida.so+0x5FD480
+// Returns pointer to current IDA configuration.
+
+// get_builtin_widgets_state @ libida.so+0x650C30
+// Returns state of built-in widgets (docked/visible/etc).
+
+// =====================================================================
+// DECLARATION COMPILER APIs (Internal C parser)
+// =====================================================================
+
+// declaration_compiler_t — IDA's internal C/C++ declaration parser.
+// This is a full C parser that handles preprocessor directives, typedefs,
+// structs, enums, unions, function declarations, etc.
+// Used internally by TIL loading and "Parse C header" feature.
+//
+// Lifecycle: ctor → set_pp_callbacks → compile/parse_decl → dtor
+//
+// declaration_compiler_t__ctor @ 0x6D49E0
+// declaration_compiler_t__dtor @ 0x6D4C50
+// declaration_compiler_t__compile @ 0x6D4C90
+// declaration_compiler_t__compile2 @ 0x6D4CA0
+// declaration_compiler_t__parse_decl @ 0x6D4CB0
+// declaration_compiler_t__parse_decl2 @ 0x6D4CC0
+// declaration_compiler_t__parse_decls @ 0x6D5590
+// declaration_compiler_t__set_pp_callbacks @ 0x6D55A0
+// declaration_compiler_t__set_smart_pointers @ 0x6D57A0
+
+// =====================================================================
+// UNDO SYSTEM INTERNALS
+// =====================================================================
+
+// add_undo_record @ 0x57EDA0
+// Adds a raw undo record to the undo stack.
+// Used by IDA internally to record database changes.
+
+// cancel_undo_point @ 0x57E370
+// Cancels the most recent undo point without recording.
+
+// get_undo_state @ 0x57F1D0
+// Returns current undo state (0 = no undo available).
+
+// =====================================================================
+// DEBUG EXCEPTION/REGION MANAGEMENT
+// =====================================================================
+
+// dbg_load_exceptions @ 0x3B13A0
+// Loads exception handling configuration from the database.
+
+// dbg_save_exceptions @ 0x3B0DB0
+// Saves exception handling configuration to the database.
+
+// dbg_restore_manual_regions @ 0x3FDAF0
+// Restores manually defined memory regions.
+
+// dbg_save_manual_regions @ 0x3FD5E0
+// Saves manually defined memory regions.
+
+// =====================================================================
+// MERGE/DIFF INFRASTRUCTURE
+// =====================================================================
+
+// create_byfunc_merge_handler @ 0x5D2580
+// Creates a merge handler that operates on a per-function basis.
+
+// create_moddata_merge_handler @ 0x632960
+// Creates a merge handler for module data.
+
+// create_moddata_diff_source @ 0x6328B0
+// Creates a diff source from module data (for IDB comparison).
+
+// create_nodeval_diff_source @ 0x4597A0
+// Creates a diff source from netnode values.
+
+// =====================================================================
+// METADATA EXTRACTION (from function analysis blobs)
+// =====================================================================
+
+// extract_extra_cmts_from_metadata @ 0x7E24E0
+// Extracts anterior/posterior extra comments from metadata blob.
+
+// extract_insn_opreprs_from_metadata @ 0x7E2440
+// Extracts instruction operand representations from metadata.
+
+// extract_insn_opreprs_from_metadata_ex @ 0x7E2470
+// Extended version with additional options.
+
+// =====================================================================
+// TYPE LIBRARY CONTAINER (TLC) APIs
+// =====================================================================
+
+// create_frame_tlc @ 0x55ADB0
+// Creates a type library container for stack frame types.
+
+// create_single_var_tlc @ 0x55AC70
+// Creates a TLC for a single variable type.
+
+// create_tlc_for_til @ 0x55A8E0
+// Creates a TLC wrapping a TIL (Type Information Library).
+
+// filter_tlc @ 0x55E760
+// Filters entries in a type library container.
+
+// =====================================================================
+// PROCESS EXECUTION
+// =====================================================================
+
+// launch_process @ 0x840E80
+// Launches an external process. Takes launch_process_params_t struct.
+// Used internally for running debugger servers, scripts, etc.
+
+// capture_process_output @ 0x841F90
+// Captures stdout/stderr from a child process.
+// capture_process_output(cmdline, stdout_out, stderr_out, timeout_ms)
+
+// check_process_exit @ 0x840BB0
+// Checks if a launched process has exited.
+
+// =====================================================================
+// NOTIFICATION/EVENT SYSTEM
+// =====================================================================
+
+// append_notification_point @ 0x4B3A30
+// Appends a notification callback to the notification chain.
+// Used internally to register for IDB events.
+
+// =====================================================================
+// CRC/HASHING
+// =====================================================================
+
+// calc_crc32 @ 0x824BA0
+// Calculates CRC32 of a buffer.
+// uint32 calc_crc32(uint32 init_crc, const void *buf, size_t size)
+
+// calc_file_crc32 @ 0x824BB0
+// Calculates CRC32 of the input file.
+// uint32 calc_file_crc32(void)
+
+// =====================================================================
+// IDS FILE OPERATIONS (FLIRT signature database)
+// =====================================================================
+
+// open_ids_file @ (via nm)
+// Opens an IDS (ID Signature) file for reading.
+
+// close_ids_file @ 0x5DF310
+// Closes an IDS file.
+
+// =====================================================================
+// MISC
+// =====================================================================
+
+// create_hit_counter @ 0x832DE0
+// Creates a performance hit counter for profiling.
+
+// create_zstd_linput @ 0x84C7C0
+// Creates a zstd-compressed linput (for reading compressed files).
+
+// compare_bpt_locs @ 0x3AEA30
+// Compares two breakpoint locations.
+
+// basic_parser_parse @ 0x7A5FE0
+// Low-level parser for basic syntax (used by IDC compiler).
+
+// dto_copy_from_inf @ 0x633340
+// Copies database transfer object from idainfo.
+
+// dto_copy_to_inf @ 0x633040
+// Copies database transfer object to idainfo.
+
+// dto_init @ 0x62E240
+// Initializes a database transfer object.
+
+// build_plugin_options @ 0x826E20
+// Builds plugin options string.
+
+// addr_from_tag @ 0x3DED20
+// Extracts an address from a color tag in disassembly line.
+
 #endif // Reference only

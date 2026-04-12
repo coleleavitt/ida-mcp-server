@@ -135,9 +135,10 @@ namespace ida_mcp::tools::indirect_branches {
                                 if (def->def_ea != BADADDR) {
                                     def_json["address"] = format_ea(def->def_ea);
 
-                                    qstring dis;
+                                    qstring dis, clean_dis;
                                     generate_disasm_line(&dis, def->def_ea, GENDSM_FORCE_CODE);
-                                    def_json["disassembly"] = dis.c_str();
+                                    tag_remove(&clean_dis, dis);
+                                    def_json["disassembly"] = clean_dis.c_str();
                                 }
 
                                 value_defs.push_back(def_json);
@@ -181,7 +182,17 @@ namespace ida_mcp::tools::indirect_branches {
                 throw std::runtime_error("Invalid address format");
             }
             ea_t ea = ea_opt.value();
-            int target_reg = params["register"].get<int>();
+
+            int target_reg;
+            if (params["register"].is_string()) {
+                std::string reg_name = params["register"].get<std::string>();
+                target_reg = str2reg(reg_name.c_str());
+                if (target_reg < 0) {
+                    throw std::runtime_error("Unknown register name: " + reg_name);
+                }
+            } else {
+                target_reg = params["register"].get<int>();
+            }
 
             func_t *func = get_func(ea);
             if (func == nullptr) {
@@ -215,15 +226,16 @@ namespace ida_mcp::tools::indirect_branches {
                 }
 
                 if (modifies_reg || reads_reg) {
-                    qstring dis;
+                    qstring dis, clean_dis;
                     generate_disasm_line(&dis, addr, GENDSM_FORCE_CODE);
+                    tag_remove(&clean_dis, dis);
 
                     qstring mnem;
                     print_insn_mnem(&mnem, addr);
 
                     json entry;
                     entry["address"] = format_ea(addr);
-                    entry["disassembly"] = dis.c_str();
+                    entry["disassembly"] = clean_dis.c_str();
                     entry["mnemonic"] = mnem.c_str();
                     entry["modifies_register"] = modifies_reg;
                     entry["reads_register"] = reads_reg;
@@ -231,9 +243,10 @@ namespace ida_mcp::tools::indirect_branches {
                     // Add operand details
                     json operands = json::array();
                     for (int i = 0; i < UA_MAXOP && insn.ops[i].type != o_void; i++) {
-                        qstring op_str;
+                        qstring op_str, clean_op;
                         print_operand(&op_str, addr, i);
-                        operands.push_back(op_str.c_str());
+                        tag_remove(&clean_op, op_str);
+                        operands.push_back(clean_op.c_str());
                     }
                     entry["operands"] = operands;
 
@@ -245,9 +258,13 @@ namespace ida_mcp::tools::indirect_branches {
                 }
             }
 
+            qstring resolved_name;
+            get_reg_name(&resolved_name, target_reg, sizeof(ea_t));
+
             return json{
                 {"address", format_ea(ea)},
                 {"register", target_reg},
+                {"register_name", resolved_name.empty() ? json(nullptr) : json(resolved_name.c_str())},
                 {"function", format_ea(func->start_ea)},
                 {"trace_count", trace.size()},
                 {"trace", trace}
@@ -295,8 +312,7 @@ namespace ida_mcp::tools::indirect_branches {
                         },
                         {
                             "register", {
-                                {"type", "integer"},
-                                {"description", "Register number"}
+                                {"description", "Register name (e.g. \"rax\", \"rbx\") or number"}
                             }
                         }
                     }

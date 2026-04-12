@@ -194,4 +194,20 @@ namespace import_entry {
     void register_tools(mcp::McpServer& server);
 }
 
+namespace signatures {
+    void register_tools(mcp::McpServer& server);
+}
+
+namespace find_items {
+    void register_tools(mcp::McpServer& server);
+}
+
+namespace data_creation {
+    void register_tools(mcp::McpServer& server);
+}
+
+namespace xref_manipulation {
+    void register_tools(mcp::McpServer& server);
+}
+
 } // namespace ida_mcp::tools

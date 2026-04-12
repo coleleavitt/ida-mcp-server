@@ -53,6 +53,14 @@
 #define __UNIX__
 #endif
 
+// IDA 9.x uses 64-bit addresses exclusively (no more ida/ida64 split).
+// Force __EA64__ so ea_t=uint64 and struct sizes match the runtime library.
+#if IDA_SDK_VERSION >= 900
+#  if !defined(__EA64__)
+#    define __EA64__
+#  endif
+#endif
+
 /// \def{BADMEMSIZE, Invalid memory size}
 #ifndef __X86__
 #define BADMEMSIZE 0x7FFFFFFFFFFFFFFFull

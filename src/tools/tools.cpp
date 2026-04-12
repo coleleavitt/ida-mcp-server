@@ -67,5 +67,10 @@ namespace ida_mcp::tools {
         dirtree_tools::register_tools(server);
 
         import_entry::register_tools(server);
+
+        signatures::register_tools(server);
+        find_items::register_tools(server);
+        data_creation::register_tools(server);
+        xref_manipulation::register_tools(server);
     }
 } // namespace ida_mcp::tools

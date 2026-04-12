@@ -91,7 +91,7 @@ namespace ida_mcp::tools::bookmarks {
             def.description = "List all bookmarks in the database";
             def.input_schema = json{
                 {"type", "object"},
-                {"properties", {}},
+                {"properties", json::object()},
                 {"required", json::array()}
             };
             server.register_tool(def, list_bookmarks_impl);

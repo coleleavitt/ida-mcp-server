@@ -36,13 +36,14 @@ namespace ida_mcp::tools::offsets {
             ea_t ea = ea_opt.value();
             int operand = params["operand"].get<int>();
 
-            qstring expr;
+            qstring expr, clean_expr;
             print_operand(&expr, ea, operand);
+            tag_remove(&clean_expr, expr);
 
             return json{
                 {"address", format_ea(ea)},
                 {"operand", operand},
-                {"expression", expr.c_str()}
+                {"expression", clean_expr.c_str()}
             };
         }
 

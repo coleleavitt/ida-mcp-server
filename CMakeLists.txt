@@ -1,4 +1,10 @@
 cmake_minimum_required(VERSION 3.20)
+
+# CMake 4.x removed FindBoost module (CMP0167). Use Boost's native BoostConfig.cmake.
+if(POLICY CMP0167)
+    cmake_policy(SET CMP0167 NEW)
+endif()
+
 project(ida_mcp_server VERSION 1.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -51,7 +57,10 @@ include_directories(
 # =============================================================================
 # Dependencies
 # =============================================================================
-find_package(Boost 1.75 REQUIRED COMPONENTS system thread)
+# Boost: only headers needed (asio, beast, system are all INTERFACE/header-only).
+# Code uses std::thread/std::mutex — no boost_thread linkage required.
+# boost_system has been header-only since Boost 1.69.
+find_package(Boost 1.75 REQUIRED)
 find_package(nlohmann_json 3.0 REQUIRED)
 
 # =============================================================================
@@ -78,7 +87,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 # Platform definitions required by IDA SDK
-add_definitions(-D${IDA_PLATFORM} -D__X64__)
+add_definitions(-D${IDA_PLATFORM} -D__X64__ -D__EA64__)
 if(WITH_HEXRAYS)
     add_definitions(-DHAS_HEXRAYS)
 endif()
@@ -150,6 +159,10 @@ set(TOOLS_SOURCES
         src/tools/metadata_backup.cpp
         src/tools/dirtree_tools.cpp
         src/tools/import_entry.cpp
+        src/tools/signatures.cpp
+        src/tools/find_items.cpp
+        src/tools/data_creation.cpp
+        src/tools/xref_manipulation.cpp
 )
 
 # Hex-Rays dependent tools (conditionally built)
@@ -197,8 +210,7 @@ target_include_directories(ida_mcp_server SYSTEM PRIVATE
 # Link libraries
 target_link_libraries(ida_mcp_server
         PRIVATE
-        Boost::system
-        Boost::thread
+        Boost::headers  # Header-only: asio, beast, system
         nlohmann_json::nlohmann_json
         ida  # IDA SDK library
         ${IDA_PLATFORM_LIBS}
