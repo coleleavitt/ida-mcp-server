@@ -42,14 +42,19 @@ void dirtree_make_cursor(
 struct event_source_t;
 typedef int (*event_handler_t)(void *ud, int event_id, va_list va);
 
-void bind_event_handler(event_source_t *source, event_handler_t handler, void *ud);
-void unbind_event_handler(event_source_t *source, event_handler_t handler);
+// Verified: both args are qvector-based objects with bidirectional linkage
+// source: +0=vtable, +8=handlers_data, +16=handler_count, +24=capacity
+// handler: +0=vtable, +8=sources_data, +16=source_count, +24=capacity
+// handler vtable[2] (offset +16) is the dispatch callback
+bool bind_event_handler(event_source_t *source, event_handler_t *handler);
+bool unbind_event_handler(event_source_t *source, event_handler_t *handler);
 
 // unbind_event_handler_all @ 0x82CCD0
 void* unbind_event_handler_all(event_source_t *source);
 
 void unbind_event_source_all(event_source_t *source);
-void event_source_dispatch(event_source_t *source, int event_id, ...);
+// Verified: iterates handlers, calls handler->vtable[2](handler, event_id, &data_copy)
+int event_source_dispatch(event_source_t *source, int event_id, const void *event_data);
 
 // =====================================================================
 // DIRTREE EVENT HANDLERS
@@ -86,15 +91,19 @@ int get_deref_color(void);
 struct vault_server_t;
 struct vault_filesys_t;
 
-const char* vault_errstr(int err);
+// Verified: first arg is qstring output, NOT const char* return
+void vault_errstr(qstring *out, int err);
+// Verified: takes char (action enum), returns static string
 const char* vault_get_action_name(int action);
-const char* vault_get_revision_postfix(void);
+// Verified: takes 6 int args (varargs-like), returns qstring
+void vault_get_revision_postfix(qstring *out);
 bool vault_is_valid_email(const char *email);
 bool vault_is_valid_name(const char *name);
 
 // get_vault_server @ 0x8C2E00 - returns singleton
 vault_server_t* get_vault_server(void);
-vault_filesys_t* get_vault_filesys(void);
+// Verified: takes 3 args (a1=output, a2=server_url, a3=flags)
+void* get_vault_filesys(void *out, const char *server, int flags);
 
 // =====================================================================
 // INDEXER APIs (NEW in 9.3) - Fast database-wide search
@@ -202,7 +211,8 @@ ea_t find_reg_access(void *out, ea_t start_ea, ea_t end_ea, const char *regname,
 // MISC
 // =====================================================================
 
-const char* get_install_root(void);
+// Verified: takes qstring* output, internally calls idadir(0)
+void get_install_root(qstring *out);
 bool get_nlist_demangled_name(qstring *out, size_t idx);
 bool is_get_nlist_demangled_name_supported(void);
 
@@ -264,7 +274,8 @@ bool get_import_entry(import_info_t *out, size_t idx);
 // =====================================================================
 
 struct bookmark_t;
-bool bookmarks_t_get_by_inode(bookmark_t *out, uint64 inode);
+// Verified: 4 args (bookmarks, lochist_entry output, inode, index). Returns uint or -1.
+uint32 bookmarks_t_get_by_inode(void *bookmarks, void *lochist_out, uint64 inode, int index);
 
 // =====================================================================
 // WIDE VALUE APIs (NEW in 9.3) - 64-bit values stored at addresses
