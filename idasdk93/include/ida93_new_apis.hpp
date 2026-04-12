@@ -61,6 +61,20 @@ idaman int ida_export dirtree_bulk_move(void *dirtree, const void *selection, co
 // Verified: wrapper that calls sub_77C830 then returns 0.
 idaman int ida_export dirtree_bulk_remove(void *dirtree, const void *selection);
 
+// indexer_match_all @ libida.so+0x432BF0
+// Synchronous full-database indexed search. Result is eavec_t (qvector<ea_t>).
+// Verified by RE: inner function uses qvector_reserve(..., 8) for results,
+// sub_43AE50 heapsorts ea_t values, free_result_vec frees subindex intermediates only.
+// a1 = pattern (qstring*: +0=data, +8=length including null)
+// a2 = flags (int* at +8, controls subindex selection)
+// a3 = result (eavec_t*: +0=ea_t* data, +8=count, +16=capacity)
+idaman bool ida_export indexer_match_all(const qstring *pattern, const void *flags, eavec_t *results);
+
+// free_result_vec @ libida.so+0x433320
+// Frees the intermediate subindex objects, NOT the eavec_t result.
+// Only needed if you used the raw internal API. The eavec_t can be freed normally.
+idaman void ida_export free_result_vec(void *subindex_vec);
+
 // =====================================================================
 // REFERENCE SECTION - not compiled, documentation only
 // =====================================================================
