@@ -2,6 +2,7 @@
 #include <typeinf.hpp>
 #include <funcs.hpp>
 #include <ida.hpp>
+#include <ida93_new_apis.hpp>
 
 namespace ida_mcp::tools::types {
     namespace {
@@ -547,6 +548,72 @@ namespace ida_mcp::tools::types {
         }
     } // anonymous namespace
 
+        json handle_build_anon_type_name(const json &params) {
+            auto ea_opt = parse_ea(params["address"]);
+            if (!ea_opt) throw std::runtime_error("Invalid address");
+
+            tinfo_t tif;
+            if (!get_tinfo(&tif, ea_opt.value()))
+                throw std::runtime_error("No type at " + format_ea(ea_opt.value()));
+
+            qstring name;
+            bool ok = tinfo_t__build_anon_type_name(&name, &tif);
+
+            qstring type_str;
+            tif.print(&type_str);
+
+            return json{
+                {"address", format_ea(ea_opt.value())},
+                {"anon_name", ok && !name.empty() ? json(name.c_str()) : json(nullptr)},
+                {"type", type_str.c_str()},
+                {"success", ok}
+            };
+        }
+
+        json handle_deduplicate_members(const json &params) {
+            std::string name = params["name"].get<std::string>();
+
+            til_t *ti = get_idati();
+            tinfo_t tif;
+            if (!tif.get_named_type(ti, name.c_str()))
+                throw std::runtime_error("Type not found: " + name);
+
+            if (!tif.is_struct() && !tif.is_union())
+                throw std::runtime_error("Not a struct/union: " + name);
+
+            udt_type_data_t udt;
+            if (!tif.get_udt_details(&udt))
+                throw std::runtime_error("Failed to get UDT details for: " + name);
+
+            size_t before = udt.size();
+            int removed = udt_type_data_t__deduplicate_members(&udt);
+
+            return json{
+                {"name", name},
+                {"members_before", before},
+                {"members_after", udt.size()},
+                {"removed", removed}
+            };
+        }
+
+        json handle_generate_deref(const json &params) {
+            auto ea_opt = parse_ea(params["address"]);
+            if (!ea_opt) throw std::runtime_error("Invalid address");
+
+            bool detailed = params.value("detailed", false);
+            qstring chain;
+            generate_deref_chain(&chain, ea_opt.value(), nullptr, detailed);
+
+            int color = get_deref_color();
+
+            return json{
+                {"address", format_ea(ea_opt.value())},
+                {"deref_chain", chain.empty() ? json(nullptr) : json(chain.c_str())},
+                {"color_index", color},
+                {"has_chain", !chain.empty()}
+            };
+        }
+
     void register_tools(mcp::McpServer &server) {
         // get_type_info
         {
@@ -766,6 +833,49 @@ namespace ida_mcp::tools::types {
                 {"required", json::array({"name"})}
             };
             server.register_tool(def, handle_get_array_info);
+        }
+
+        {
+            mcp::ToolDefinition def;
+            def.name = "build_anon_type_name";
+            def.description = "Generate a name for an anonymous struct/union/enum type at address";
+            def.input_schema = json{
+                {"type", "object"},
+                {"properties", {
+                    {"address", {{"type", "string"}, {"description", "Hex address with anonymous type"}}}
+                }},
+                {"required", json::array({"address"})}
+            };
+            server.register_tool(def, handle_build_anon_type_name);
+        }
+
+        {
+            mcp::ToolDefinition def;
+            def.name = "deduplicate_struct_members";
+            def.description = "Remove duplicate members from a struct/union type definition";
+            def.input_schema = json{
+                {"type", "object"},
+                {"properties", {
+                    {"name", {{"type", "string"}, {"description", "Struct/union type name"}}}
+                }},
+                {"required", json::array({"name"})}
+            };
+            server.register_tool(def, handle_deduplicate_members);
+        }
+
+        {
+            mcp::ToolDefinition def;
+            def.name = "get_deref_chain";
+            def.description = "Generate pointer dereference chain at address (useful for vtables, linked lists, nested struct access)";
+            def.input_schema = json{
+                {"type", "object"},
+                {"properties", {
+                    {"address", {{"type", "string"}, {"description", "Hex address to dereference"}}},
+                    {"detailed", {{"type", "boolean"}, {"description", "Show detailed chain info (default false)"}}}
+                }},
+                {"required", json::array({"address"})}
+            };
+            server.register_tool(def, handle_generate_deref);
         }
     }
 } // namespace ida_mcp::tools::types
