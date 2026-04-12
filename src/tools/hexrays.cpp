@@ -79,7 +79,7 @@ namespace ida_mcp::tools::hexrays {
                     "        if blk.start == 0xffffffffffffffff: continue\n"
                     "        insn = blk.head\n"
                     "        while insn:\n"
-                    "            lines.append(insn._print())\n"
+                    "            import ida_lines; lines.append(ida_lines.tag_remove(insn._print()))\n"
                     "            insn = insn.next\n"
                     "    r = {'ok': True, 'blocks': mba.qty, 'mc': chr(10).join(lines)}\n"
                     "else:\n"
