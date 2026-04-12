@@ -72,5 +72,7 @@ namespace ida_mcp::tools {
         find_items::register_tools(server);
         data_creation::register_tools(server);
         xref_manipulation::register_tools(server);
+        segment_manipulation::register_tools(server);
+        source_info::register_tools(server);
     }
 } // namespace ida_mcp::tools

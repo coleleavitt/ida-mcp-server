@@ -80,7 +80,6 @@ idaman THREAD_SAFE char *ida_export getsysfile(
 
 idaman THREAD_SAFE const char *ida_export get_user_idadir(void);
 
-
 /// Get list of directories in which to find a specific IDA resource
 /// (see \ref SUBDIR). The order of the resulting list is as follows:
 /// \code

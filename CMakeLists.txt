@@ -163,6 +163,8 @@ set(TOOLS_SOURCES
         src/tools/find_items.cpp
         src/tools/data_creation.cpp
         src/tools/xref_manipulation.cpp
+        src/tools/segment_manipulation.cpp
+        src/tools/source_info.cpp
 )
 
 # Hex-Rays dependent tools (conditionally built)

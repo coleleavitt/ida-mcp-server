@@ -210,4 +210,12 @@ namespace xref_manipulation {
     void register_tools(mcp::McpServer& server);
 }
 
+namespace segment_manipulation {
+    void register_tools(mcp::McpServer& server);
+}
+
+namespace source_info {
+    void register_tools(mcp::McpServer& server);
+}
+
 } // namespace ida_mcp::tools
