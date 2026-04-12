@@ -61,6 +61,64 @@ namespace ida_mcp::tools::hexrays {
         cfuncptr_t cfunc = decompile(func, &hf, DECOMP_NO_WAIT);
 
         if (cfunc == nullptr) {
+            // Hex-Rays failed — fall back to microcode lifting via IDAPython
+            extlang_object_t python = find_extlang_by_name("Python");
+            if (python != nullptr) {
+                qstring py_code;
+                py_code.sprnt(
+                    "import ida_hexrays as hr, ida_funcs, json\n"
+                    "func = ida_funcs.get_func(0x%llX)\n"
+                    "hf = hr.hexrays_failure_t()\n"
+                    "mbr = hr.mba_ranges_t(func)\n"
+                    "mba = hr.gen_microcode(mbr, hf, None, hr.DECOMP_WARNINGS, hr.MMAT_LOCOPT)\n"
+                    "r = {}\n"
+                    "if mba:\n"
+                    "    lines = []\n"
+                    "    for i in range(mba.qty):\n"
+                    "        blk = mba.get_mblock(i)\n"
+                    "        if blk.start == 0xffffffffffffffff: continue\n"
+                    "        insn = blk.head\n"
+                    "        while insn:\n"
+                    "            lines.append(insn._print())\n"
+                    "            insn = insn.next\n"
+                    "    r = {'ok': True, 'blocks': mba.qty, 'mc': chr(10).join(lines)}\n"
+                    "else:\n"
+                    "    r = {'ok': False, 'err': hf.desc()}\n"
+                    "with open('/tmp/_mc_lift.json','w') as f: json.dump(r,f)\n",
+                    (uint64)ea);
+
+                qstring errbuf;
+                python->eval_snippet(py_code.c_str(), &errbuf);
+
+                qstring json_str;
+                FILE *fp = qfopen("/tmp/_mc_lift.json", "r");
+                if (fp) {
+                    char buf[65536];
+                    while (size_t n = qfread(fp, buf, sizeof(buf)))
+                        json_str.append(buf, n);
+                    qfclose(fp);
+                }
+
+                json mc_result;
+                if (!json_str.empty()) {
+                    try { mc_result = json::parse(json_str.c_str()); } catch (...) {}
+                }
+
+                if (mc_result.value("ok", false)) {
+                    qstring func_name;
+                    get_func_name(&func_name, func->start_ea);
+                    return json{
+                        {"address", format_ea(ea)},
+                        {"function_name", func_name.c_str()},
+                        {"pseudocode", mc_result["mc"]},
+                        {"signature", nullptr},
+                        {"decompilation_method", "microcode_lift"},
+                        {"microcode_blocks", mc_result["blocks"]},
+                        {"lvars_count", 0}
+                    };
+                }
+            }
+
             qstring err_str = hf.desc();
             throw std::runtime_error(std::string("Decompilation failed: ") + err_str.c_str());
         }
