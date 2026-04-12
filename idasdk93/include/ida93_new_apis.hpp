@@ -51,15 +51,57 @@ idaman int ida_export get_deref_color(void);
 // Verified: takes qstring* output, internally calls idadir(0).
 idaman void ida_export get_install_root(qstring *out);
 
+// dirtree_cursor_t: 16-byte struct { diridx_t parent; size_t rank; }
+// Verified from dirtree_make_cursor: writes a1[0] and a1[1] (two int64s)
+struct ida_dirtree_cursor_t {
+    uint64 parent;
+    uint64 rank;
+};
+
+// dirtree_selection_t: qvector<dirtree_cursor_t>
+// Verified from bulk_remove_inner: a2[0]=data, a2[1]=count, elements are 16 bytes
+struct ida_dirtree_selection_t {
+    ida_dirtree_cursor_t *entries;
+    size_t count;
+    size_t capacity;
+};
+
 // dirtree_bulk_move @ libida.so+0x77A230
-// Moves multiple dirtree entries to a destination folder.
-// Verified: 4 args (dirtree, selection, dest_path, flags)
-idaman int ida_export dirtree_bulk_move(void *dirtree, const void *selection, const char *dest, int flags);
+// Verified: 4 args (dirtree_impl, selection, dest_diridx, flags)
+idaman int ida_export dirtree_bulk_move(
+    void *dirtree,
+    const ida_dirtree_selection_t *selection,
+    const char *dest,
+    int flags);
 
 // dirtree_bulk_remove @ libida.so+0x77CBD0
-// Removes multiple dirtree entries.
-// Verified: wrapper that calls sub_77C830 then returns 0.
-idaman int ida_export dirtree_bulk_remove(void *dirtree, const void *selection);
+// Verified: 3 args (dirtree_impl, selection, flags)
+idaman int ida_export dirtree_bulk_remove(
+    void *dirtree,
+    const ida_dirtree_selection_t *selection);
+
+// dirtree_make_cursor @ libida.so+0x777740
+// Verified: fills 16-byte cursor from (parent_diridx, rank)
+idaman void ida_export dirtree_make_cursor(
+    ida_dirtree_cursor_t *out,
+    uint64 parent,
+    uint64 rank);
+
+// dirtree_traverse @ libida.so+0x777C50
+// Tree traversal with visitor callback.
+// Internal dir entry = 176 bytes, child entry = 9 bytes (8-byte idx + 1-byte is_dir)
+idaman int ida_export dirtree_traverse(void *dirtree, void *visitor);
+
+// dirtree_find_entry @ libida.so+0x778050
+// Find entry by inode, returns cursor via output param.
+idaman int ida_export dirtree_find_entry(
+    ida_dirtree_cursor_t *out,
+    void *dirtree,
+    const void *entry_id);
+
+// dirtree_get_entry_attrs @ libida.so+0x77C4B0
+// Get attributes of a dirtree entry. Returns qvector of attr strings.
+idaman void ida_export dirtree_get_entry_attrs(void *out_qvec, void *dirtree);
 
 // indexer_match_all @ libida.so+0x432BF0
 // Synchronous full-database indexed search. Result is eavec_t (qvector<ea_t>).
