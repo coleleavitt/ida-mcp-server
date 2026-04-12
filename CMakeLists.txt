@@ -165,6 +165,7 @@ set(TOOLS_SOURCES
         src/tools/xref_manipulation.cpp
         src/tools/segment_manipulation.cpp
         src/tools/source_info.cpp
+        src/tools/objc_analysis.cpp
 )
 
 # Hex-Rays dependent tools (conditionally built)

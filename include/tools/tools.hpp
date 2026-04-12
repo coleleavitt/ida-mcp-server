@@ -218,4 +218,8 @@ namespace source_info {
     void register_tools(mcp::McpServer& server);
 }
 
+namespace objc_analysis {
+    void register_tools(mcp::McpServer& server);
+}
+
 } // namespace ida_mcp::tools
