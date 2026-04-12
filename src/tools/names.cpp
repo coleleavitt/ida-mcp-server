@@ -1,5 +1,6 @@
 #include "tools/tools.hpp"
 #include <name.hpp>
+#include <ida93_new_apis.hpp>
 
 namespace ida_mcp::tools::names {
     namespace {
@@ -19,12 +20,23 @@ namespace ida_mcp::tools::names {
             bool is_public = !name.empty() && is_public_name(ea);
             bool is_weak = !name.empty() && is_weak_name(ea);
 
-            return json{
+            json result = {
                 {"address", format_ea(ea)},
                 {"name", name.empty() ? nullptr : json(name.c_str())},
                 {"is_public", is_public},
                 {"is_weak", is_weak}
             };
+
+            if (is_get_nlist_demangled_name_supported()) {
+                size_t idx = get_nlist_idx(ea);
+                if (idx != BADADDR) {
+                    const char *demangled = get_nlist_demangled_name(idx);
+                    if (demangled != nullptr)
+                        result["demangled"] = demangled;
+                }
+            }
+
+            return result;
         }
 
         // Set the name at a specific address
