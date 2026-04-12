@@ -1,4 +1,6 @@
 #include "tools/tools.hpp"
+#include <expr.hpp>
+#include <diskio.hpp>
 
 #ifdef HAS_HEXRAYS
 #include <hexrays.hpp>
@@ -387,6 +389,110 @@ namespace ida_mcp::tools::hexrays {
                 }
             };
             server.register_tool(def, export_all_decompiled);
+        }
+        {
+            mcp::ToolDefinition def;
+            def.name = "force_decompile";
+            def.description =
+                "Force-decompile a function that Hex-Rays refuses to decompile. "
+                "Falls back to microcode lifting (MMAT_LOCOPT) when normal decompilation fails. "
+                "Works on PAC-obfuscated, indirect-jump, and other resistant functions.";
+            def.input_schema = json{
+                {"type", "object"},
+                {"properties", {
+                    {"address", {{"type", "string"}, {"description", "Function address (hex)"}}}
+                }},
+                {"required", json::array({"address"})}
+            };
+
+            server.register_tool(def, [](const json &params) -> json {
+                auto ea_opt = parse_ea(params["address"]);
+                if (!ea_opt) throw std::runtime_error("Invalid address");
+                ea_t ea = ea_opt.value();
+
+                func_t *func = get_func(ea);
+                if (!func) throw std::runtime_error("No function at " + format_ea(ea));
+
+                qstring fname;
+                get_func_name(&fname, func->start_ea);
+
+                extlang_object_t python = find_extlang_by_name("Python");
+                if (python == nullptr)
+                    throw std::runtime_error("IDAPython not available");
+
+                qstring py_code;
+                py_code.sprnt(
+                    "import ida_hexrays as hr\n"
+                    "import ida_funcs\n"
+                    "import json\n"
+                    "\n"
+                    "ea = 0x%llX\n"
+                    "func = ida_funcs.get_func(ea)\n"
+                    "result = {}\n"
+                    "\n"
+                    "try:\n"
+                    "    cfunc = hr.decompile(ea)\n"
+                    "    if cfunc:\n"
+                    "        result = {'method': 'hexrays', 'pseudocode': str(cfunc)}\n"
+                    "    else:\n"
+                    "        raise Exception('returned None')\n"
+                    "except:\n"
+                    "    hf = hr.hexrays_failure_t()\n"
+                    "    mbr = hr.mba_ranges_t(func)\n"
+                    "    mba = hr.gen_microcode(mbr, hf, None, hr.DECOMP_WARNINGS, hr.MMAT_LOCOPT)\n"
+                    "    if mba:\n"
+                    "        lines = []\n"
+                    "        for i in range(mba.qty):\n"
+                    "            blk = mba.get_mblock(i)\n"
+                    "            if blk.start == 0xffffffffffffffff: continue\n"
+                    "            insn = blk.head\n"
+                    "            while insn:\n"
+                    "                lines.append(insn._print())\n"
+                    "                insn = insn.next\n"
+                    "        result = {'method': 'microcode', 'blocks': mba.qty, 'microcode': '\\n'.join(lines)}\n"
+                    "    else:\n"
+                    "        result = {'method': 'failed', 'error': hf.desc()}\n"
+                    "\n"
+                    "with open('/tmp/_force_decompile_result.json', 'w') as f:\n"
+                    "    json.dump(result, f)\n",
+                    (uint64)ea);
+
+                qstring errbuf;
+                python->eval_snippet(py_code.c_str(), &errbuf);
+
+                qstring json_str;
+                FILE *fp = qfopen("/tmp/_force_decompile_result.json", "r");
+                if (fp) {
+                    char buf[4096];
+                    while (size_t n = qfread(fp, buf, sizeof(buf)))
+                        json_str.append(buf, n);
+                    qfclose(fp);
+                }
+
+                json py_result;
+                if (!json_str.empty()) {
+                    try { py_result = json::parse(json_str.c_str()); } catch (...) {}
+                }
+
+                json result;
+                result["address"] = format_ea(func->start_ea);
+                result["function"] = fname.c_str();
+                result["size"] = func->size();
+
+                if (py_result.contains("pseudocode")) {
+                    result["method"] = "hexrays";
+                    result["pseudocode"] = py_result["pseudocode"];
+                } else if (py_result.contains("microcode")) {
+                    result["method"] = "microcode_lift";
+                    result["blocks"] = py_result["blocks"];
+                    result["microcode"] = py_result["microcode"];
+                } else {
+                    result["method"] = "failed";
+                    result["error"] = py_result.value("error", errbuf.c_str());
+                }
+
+                return result;
+            });
         }
     }
 } // namespace ida_mcp::tools::hexrays
