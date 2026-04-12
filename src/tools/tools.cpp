@@ -75,5 +75,6 @@ namespace ida_mcp::tools {
         segment_manipulation::register_tools(server);
         source_info::register_tools(server);
         objc_analysis::register_tools(server);
+        objc_deep::register_tools(server);
     }
 } // namespace ida_mcp::tools
