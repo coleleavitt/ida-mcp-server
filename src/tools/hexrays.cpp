@@ -61,37 +61,83 @@ namespace ida_mcp::tools::hexrays {
         cfuncptr_t cfunc = decompile(func, &hf, DECOMP_NO_WAIT);
 
         if (cfunc == nullptr) {
-            // Hex-Rays failed — fall back to microcode lifting via IDAPython
+            // Tier 2: Patch indirect branches (BRAB/BRAA/ijmp) to RET, decompile, restore
+            // Works on PAC-obfuscated, CFI-protected, and control-flow-flattened code
             extlang_object_t python = find_extlang_by_name("Python");
             if (python != nullptr) {
                 qstring py_code;
                 py_code.sprnt(
-                    "import ida_hexrays as hr, ida_funcs, json\n"
-                    "func = ida_funcs.get_func(0x%llX)\n"
-                    "hf = hr.hexrays_failure_t()\n"
-                    "mbr = hr.mba_ranges_t(func)\n"
-                    "mba = hr.gen_microcode(mbr, hf, None, hr.DECOMP_WARNINGS, hr.MMAT_LOCOPT)\n"
-                    "r = {}\n"
-                    "if mba:\n"
-                    "    lines = []\n"
-                    "    for i in range(mba.qty):\n"
-                    "        blk = mba.get_mblock(i)\n"
-                    "        if blk.start == 0xffffffffffffffff: continue\n"
-                    "        insn = blk.head\n"
-                    "        while insn:\n"
-                    "            import ida_lines; lines.append(ida_lines.tag_remove(insn._print()))\n"
-                    "            insn = insn.next\n"
-                    "    r = {'ok': True, 'blocks': mba.qty, 'mc': chr(10).join(lines)}\n"
-                    "else:\n"
-                    "    r = {'ok': False, 'err': hf.desc()}\n"
-                    "with open('/tmp/_mc_lift.json','w') as f: json.dump(r,f)\n",
+                    "import ida_hexrays as hr, ida_funcs, ida_bytes, ida_lines, json\n"
+                    "ea = 0x%llX\n"
+                    "func = ida_funcs.get_func(ea)\n"
+                    "r = {'tier2': False, 'tier3': False}\n"
+                    "\n"
+                    "# Tier 2: patch BRAB/BRAA -> RET, decompile, restore\n"
+                    "patches = []\n"
+                    "addr = func.start_ea\n"
+                    "while addr < func.end_ea:\n"
+                    "    dw = ida_bytes.get_dword(addr)\n"
+                    "    # BRAB/BRAA family: top byte 0xD71F or 0xD61F with auth bits\n"
+                    "    if (dw & 0xFFFF0000) == 0xD71F0000 or (dw & 0xFFFF0000) == 0xD61F0000:\n"
+                    "        patches.append((addr, dw))\n"
+                    "        ida_bytes.patch_dword(addr, 0xD65F03C0)  # ARM64 RET\n"
+                    "    # x86 indirect: FF /4 (jmp r/m) or FF /2 (call r/m) with ModR/M\n"
+                    "    elif ida_bytes.get_byte(addr) == 0xFF:\n"
+                    "        modrm = ida_bytes.get_byte(addr + 1)\n"
+                    "        reg = (modrm >> 3) & 7\n"
+                    "        if reg == 4 or reg == 2:  # jmp or call indirect\n"
+                    "            sz = 2\n"
+                    "            if (modrm & 0xC0) == 0x40: sz = 3\n"
+                    "            elif (modrm & 0xC0) == 0x80: sz = 6\n"
+                    "            orig = [ida_bytes.get_byte(addr + i) for i in range(sz)]\n"
+                    "            patches.append((addr, orig))\n"
+                    "            ida_bytes.patch_byte(addr, 0xC3)  # x86 RET\n"
+                    "            for i in range(1, sz):\n"
+                    "                ida_bytes.patch_byte(addr + i, 0x90)  # NOP pad\n"
+                    "    addr += 4 if func.start_ea > 0x100000000 else 1\n"
+                    "\n"
+                    "if patches:\n"
+                    "    try:\n"
+                    "        cfunc = hr.decompile(ea)\n"
+                    "        if cfunc:\n"
+                    "            sv = cfunc.get_pseudocode()\n"
+                    "            lines = []\n"
+                    "            for i in range(len(sv)):\n"
+                    "                lines.append(ida_lines.tag_remove(sv[i].line))\n"
+                    "            r = {'tier2': True, 'pseudo': chr(10).join(lines), 'patched': len(patches)}\n"
+                    "    except: pass\n"
+                    "    # Restore ALL original bytes\n"
+                    "    for p in patches:\n"
+                    "        if isinstance(p[1], int):\n"
+                    "            ida_bytes.patch_dword(p[0], p[1])\n"
+                    "        else:\n"
+                    "            for i, b in enumerate(p[1]):\n"
+                    "                ida_bytes.patch_byte(p[0] + i, b)\n"
+                    "\n"
+                    "# Tier 3: microcode lift if tier 2 failed\n"
+                    "if not r.get('tier2'):\n"
+                    "    hf = hr.hexrays_failure_t()\n"
+                    "    mbr = hr.mba_ranges_t(func)\n"
+                    "    mba = hr.gen_microcode(mbr, hf, None, hr.DECOMP_WARNINGS, hr.MMAT_LOCOPT)\n"
+                    "    if mba:\n"
+                    "        lines = []\n"
+                    "        for i in range(mba.qty):\n"
+                    "            blk = mba.get_mblock(i)\n"
+                    "            if blk.start == 0xffffffffffffffff: continue\n"
+                    "            insn = blk.head\n"
+                    "            while insn:\n"
+                    "                lines.append(ida_lines.tag_remove(insn._print()))\n"
+                    "                insn = insn.next\n"
+                    "        r = {'tier3': True, 'pseudo': chr(10).join(lines), 'blocks': mba.qty}\n"
+                    "\n"
+                    "with open('/tmp/_decompile_fallback.json','w') as f: json.dump(r,f)\n",
                     (uint64)ea);
 
                 qstring errbuf;
                 python->eval_snippet(py_code.c_str(), &errbuf);
 
                 qstring json_str;
-                FILE *fp = qfopen("/tmp/_mc_lift.json", "r");
+                FILE *fp = qfopen("/tmp/_decompile_fallback.json", "r");
                 if (fp) {
                     char buf[65536];
                     while (size_t n = qfread(fp, buf, sizeof(buf)))
@@ -99,21 +145,35 @@ namespace ida_mcp::tools::hexrays {
                     qfclose(fp);
                 }
 
-                json mc_result;
+                json fb;
                 if (!json_str.empty()) {
-                    try { mc_result = json::parse(json_str.c_str()); } catch (...) {}
+                    try { fb = json::parse(json_str.c_str()); } catch (...) {}
                 }
 
-                if (mc_result.value("ok", false)) {
+                if (fb.value("tier2", false)) {
                     qstring func_name;
                     get_func_name(&func_name, func->start_ea);
                     return json{
                         {"address", format_ea(ea)},
                         {"function_name", func_name.c_str()},
-                        {"pseudocode", mc_result["mc"]},
+                        {"pseudocode", fb["pseudo"]},
+                        {"signature", nullptr},
+                        {"decompilation_method", "patched_decompile"},
+                        {"patches_applied", fb["patched"]},
+                        {"lvars_count", 0}
+                    };
+                }
+
+                if (fb.value("tier3", false)) {
+                    qstring func_name;
+                    get_func_name(&func_name, func->start_ea);
+                    return json{
+                        {"address", format_ea(ea)},
+                        {"function_name", func_name.c_str()},
+                        {"pseudocode", fb["pseudo"]},
                         {"signature", nullptr},
                         {"decompilation_method", "microcode_lift"},
-                        {"microcode_blocks", mc_result["blocks"]},
+                        {"microcode_blocks", fb["blocks"]},
                         {"lvars_count", 0}
                     };
                 }
