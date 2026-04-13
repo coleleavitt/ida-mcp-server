@@ -455,6 +455,164 @@ ipsw                       86MB           ipsw v3.1.671 (dyld cache extraction t
 
 ---
 
+## Commands Reference
+
+### Device Connection
+```bash
+# Restart usbmuxd and detect device
+echo "Snowman55" | sudo -S killall -9 usbmuxd 2>/dev/null
+sleep 2
+echo "Snowman55" | sudo -S nohup usbmuxd -f > /tmp/usbmuxd.log 2>&1 &
+sleep 4
+idevice_id -l
+
+# Pair device (tap Trust on phone first)
+idevicepair pair
+
+# Start port forwarding
+killall iproxy 2>/dev/null; sleep 1
+nohup iproxy -u 00008030-001210CE2208802E 2222:22 > /dev/null 2>&1 &
+nohup iproxy -u 00008030-001210CE2208802E 27042:27042 > /dev/null 2>&1 &
+
+# SSH into device
+ssh -i ~/.ssh/iphone_jb_new -p 2222 -o StrictHostKeyChecking=no root@localhost
+
+# Copy binaries from device
+scp -i ~/.ssh/iphone_jb_new -P 2222 -o StrictHostKeyChecking=no root@localhost:/usr/libexec/amfid /tmp/ios_binaries/apple_private/
+```
+
+### IDA MCP Server
+```bash
+# Build the plugin
+cd ~/CLionProjects/ida-pro/build
+cmake -B . -S .. && make -j$(nproc)
+
+# Install
+cp build/ida_mcp_server.so ~/Downloads/Software/IDAPro/ida-pro-9.33/plugins/
+
+# Launch IDA with a binary
+~/Downloads/Software/IDAPro/ida-pro-9.33/ida /tmp/ios_binaries/apple_private/fairplaydeviceidentityd
+
+# Initialize MCP connection
+curl -s -X POST http://127.0.0.1:7777/mcp -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"claude","version":"1.0"}}}'
+
+# List all tools
+curl -s -X POST http://127.0.0.1:7777/mcp -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' | jq '.result.tools | length'
+
+# Decompile a function
+curl -s -X POST http://127.0.0.1:7777/mcp -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"decompile_function","arguments":{"address":"0x100003788"}}}'
+
+# Run IDAPython
+curl -s -X POST http://127.0.0.1:7777/mcp -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"run_python","arguments":{"code":"import ida_hexrays; print(ida_hexrays.init_hexrays_plugin())"}}}'
+```
+
+### Mass Decompilation
+```bash
+# Collect all function addresses (paginate by index)
+> /tmp/all_funcs.txt
+for cursor in $(seq 0 100 40000); do
+  curl -s --max-time 10 -X POST http://127.0.0.1:7777/mcp -H "Content-Type: application/json" \
+    -d "{\"jsonrpc\":\"2.0\",\"id\":$cursor,\"method\":\"tools/call\",\"params\":{\"name\":\"list_functions\",\"arguments\":{\"cursor\":\"$cursor\",\"limit\":100}}}" \
+    | jq -r '.result.content[0].text' | jq -r '.functions[] | "\(.address) \(.name)"' >> /tmp/all_funcs.txt
+done
+
+# Mass decompile all functions
+mkdir -p /tmp/output/all
+while IFS=' ' read -r addr name; do
+  safename=$(echo "$name" | tr '/:+[]' '_____' | head -c 100)
+  outfile="/tmp/output/all/${safename}.c"
+  [ -f "$outfile" ] && continue
+  result=$(curl -s --max-time 15 -X POST http://127.0.0.1:7777/mcp -H "Content-Type: application/json" \
+    -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"decompile_function\",\"arguments\":{\"address\":\"$addr\"}}}" \
+    | jq -r '.result.content[0].text' | jq -r '.pseudocode // empty')
+  [ -n "$result" ] && echo "$result" > "$outfile"
+done < /tmp/all_funcs.txt
+```
+
+### FairPlay Crypto Decompilation (BRAB→RET Technique)
+```bash
+# Use IDAPython to patch BRAB→RET, decompile, restore
+curl -s -X POST http://127.0.0.1:7777/mcp -H "Content-Type: application/json" -d '{
+  "jsonrpc":"2.0","id":1,
+  "method":"tools/call",
+  "params":{"name":"run_python","arguments":{"code":"
+import ida_hexrays as hr, ida_funcs, ida_bytes, ida_lines, json, os
+
+def decompile_patched(ea):
+    func = ida_funcs.get_func(ea)
+    if not func: return None
+    patches = []
+    addr = func.start_ea
+    while addr < func.end_ea:
+        dw = ida_bytes.get_dword(addr)
+        if (dw & 0xFFFF0000) == 0xD71F0000:
+            patches.append((addr, dw))
+            ida_bytes.patch_dword(addr, 0xD65F03C0)  # ARM64 RET
+        addr += 4
+    if not patches: return None
+    pseudo = None
+    try:
+        cfunc = hr.decompile(ea)
+        if cfunc:
+            sv = cfunc.get_pseudocode()
+            lines = [ida_lines.tag_remove(sv[i].line) for i in range(len(sv))]
+            pseudo = chr(10).join(lines)
+    except: pass
+    for a, orig in patches:
+        ida_bytes.patch_dword(a, orig)
+    return pseudo
+
+result = decompile_patched(0x100031038)
+if result:
+    with open(\"/tmp/crypto.c\", \"w\") as f: f.write(result)
+"}}
+}'
+```
+
+### Dyld Shared Cache Extraction
+```bash
+# Install rsync on device
+ssh -i ~/.ssh/iphone_jb_new -p 2222 root@localhost 'apt-get install -y rsync'
+
+# Copy full dyld shared cache (3.3GB)
+rsync -avz -e "ssh -i ~/.ssh/iphone_jb_new -p 2222" \
+  root@localhost:"/System/Cryptexes/OS/System/Library/Caches/com.apple.dyld/" \
+  /tmp/dyld_cache_full/
+
+# Install ipsw tool
+curl -sL "https://github.com/blacktop/ipsw/releases/download/v3.1.671/ipsw_3.1.671_linux_x86_64.tar.gz" \
+  -o /tmp/ipsw.tar.gz && tar -xzf /tmp/ipsw.tar.gz -C /tmp/ && chmod +x /tmp/ipsw
+
+# List images in cache
+/tmp/ipsw dyld info /tmp/dyld_cache_full/dyld_shared_cache_arm64e --dylibs
+
+# Extract a framework
+/tmp/ipsw dyld extract /tmp/dyld_cache_full/dyld_shared_cache_arm64e \
+  /System/Library/PrivateFrameworks/CoreEntitlements.framework/CoreEntitlements \
+  --output /tmp/ios_frameworks/
+```
+
+### Git Workflow
+```bash
+# ida-mcp-server repo
+cd ~/CLionProjects/ida-pro
+git add -A && git commit -m "message" && git push origin main
+
+# idasdk93 repo
+cd ~/Downloads/Software/IDAPro/idasdk93
+git add -A && git commit -m "message" && git push origin main
+
+# iphonern repo (private)
+cd ~/RustProjects/iphonern
+git add -A && git commit -m "message" && git push origin master
+```
+
+---
+
 ## Search Improvements
 
 Replaced slow `std::regex` iteration with `find_text(pattern, SEARCH_REGEX)` — IDA's `search()` at `0x67AB00` internally supports regex via `qregexec()` when flag `0x20` (`SEARCH_REGEX`) is set. Confirmed by decompiling the search engine.
