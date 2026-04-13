@@ -2,7 +2,15 @@
 
 ## Session Overview
 
-Built 235 MCP tools for IDA Pro 9.33, fixed 5 crash bugs, reverse-engineered 8 IDA binaries (739K lines of decompiled code), and created a custom SDK with 116+ undocumented API stubs verified by decompiling libida.so directly.
+Built 238 MCP tools for IDA Pro 9.33, fixed 5 crash bugs, reverse-engineered 8 IDA binaries + 6 iOS daemons (2.44M lines of decompiled code), created a custom SDK with 116+ undocumented API stubs, invented a novel BRAB→RET decompilation bypass for PAC-obfuscated code, and fully reversed Apple's FairPlay DRM crypto to C pseudocode.
+
+### Key Numbers
+- **238 MCP tools** (up from 181)
+- **2,437,000 lines** of decompiled pseudocode
+- **62,600 files** across 14 decompiled binaries
+- **5 crash bugs** fixed (stack smashing, SIGSEGV, infinite loop, tag corruption, type mismatch)
+- **37 FairPlay DRM** crypto functions decompiled via BRAB→RET patching
+- **3.3GB dyld shared cache** copied from device for framework extraction
 
 ---
 
@@ -249,12 +257,136 @@ All failed with "call analysis failed" — PAC/crypto/obfuscation:
 
 ---
 
-## Tool Inventory (235 total)
+## 3-Tier Decompilation System
+
+The `decompile_function` tool now handles ANY code automatically:
+
+**Tier 1: Normal Hex-Rays** — standard functions → full pseudocode + types + local vars
+
+**Tier 2: Patch-and-Decompile** — PAC/obfuscated code → real C pseudocode
+- Detects BRAB/BRAA (ARM64 PAC branches) via `0xD71F`/`0xD61F` prefix
+- Detects x86 indirect jmp/call (FF /4, FF /2) via ModR/M decode
+- Patches to RET (ARM64: `0xD65F03C0`, x86: `0xC3`+NOP)
+- Decompiles the now-linear function via Hex-Rays
+- Restores ALL original bytes immediately after
+- Returns `decompilation_method: "patched_decompile"`
+
+**Tier 3: Microcode Lift** — last resort, always succeeds
+- `gen_microcode` at `MMAT_LOCOPT` level via IDAPython
+- Returns typed SSA microcode as pseudocode
+- Returns `decompilation_method: "microcode_lift"`
+
+Successfully produces real C pseudocode for all 37 FairPlay crypto functions
+that Hex-Rays normally refuses with "call analysis failed."
+
+---
+
+## iOS Daemon Decompilation Results
+
+### fairplaydeviceidentityd (2.2MB, ARM64e)
+- 6,699 functions, 268K lines — **100% pseudocode coverage**
+- 37 PAC-protected crypto functions decompiled via BRAB→RET
+- White-box AES with MBA obfuscation fully reversed
+- Dispatch table: 37 entries across 48KB of `__DATA_CONST`
+- 5 protection layers identified (anti-debug → code encryption → PAC flow → PAC data → MBA)
+- Info.plist: `com.apple.fairplaydeviceidentityd`, iphoneos16.4.internal SDK
+
+### fairplayd.H2 (19MB, ARM64e)
+- 37,639 functions, 1,109K lines — **100% coverage** (407 retried, 0 unrecovered)
+- Main FairPlay daemon with full DRM protocol implementation
+
+### securityd (3.2MB, ARM64e)
+- 12,612 functions, 372K lines — zero failures
+- 5,492 ObjC methods: keychain operations, certificate validation, trust evaluation
+
+### installd (595KB, ARM64e)
+- 2,205 functions, 59K lines — zero failures
+- 669 ObjC methods: IPA validation, app installation, entitlement checking
+
+### keybagd (286KB, ARM64e)
+- 865 functions, 30K lines — zero failures
+- Key management, backup keybag, escrow operations
+
+### amfid (138KB, ARM64e)
+- 508 functions, 10K lines — zero failures
+- Code signature validation: `AMFIPathValidator_ios.validateWithError:`
+- DER entitlement construction via `CESerializeCFDictionary`
+
+### lockdownd (1.2MB, ARM64e)
+- 3,078 functions, 78K lines — all recovered on retry
+- SRP pairing, escrow keybag, device activation, 329 ObjC methods
+
+---
+
+## IDA Pro Internal Decompilation Results
+
+### libida.so (45MB) — ~80 key functions decompiled
+### hexx64.so (5MB) — 2,375 functions, 242K lines (Hex-Rays decompiler)
+### arm.so (680KB) — 685 functions, 78K lines (ARM processor module)
+### pc.so (1.5MB) — 681 functions, 78K lines (x86 processor module)
+### macho.so (410KB) — 40 functions, 24K lines (Mach-O loader)
+### objc.so (244KB) — 313 functions, 20K lines (ObjC plugin)
+### pe.so (212KB) — 210 functions, 20K lines (PE loader)
+### rtti.so (83KB) — 78 functions, 9K lines (RTTI plugin)
+
+---
+
+## Device Connection
+
+### iPhone 11 Pro Max (T8030/A13 Bionic)
+- UDID: `00008030-001210CE2208802E`
+- iOS 16.4.1 (Build 20E252), Darwin/XNU 22.4.0
+- Jailbroken with Dopamine (rootless, ElleKit)
+- SSH: `ssh -i ~/.ssh/iphone_jb_new -p 2222 root@localhost`
+- Proxy: `iproxy -u 00008030-001210CE2208802E 2222:22`
+- Frida server installed (v17.2.17) but USB connection unreliable
+- debugserver at `/var/jb/usr/bin/debugserver`
+
+### Dyld Shared Cache
+- Full cache at `/tmp/dyld_cache_full/` (3.3GB, 46 files)
+- 2,715 images, iOS 16.4, arm64e
+- `ipsw` v3.1.671 installed at `/tmp/ipsw`
+- Extraction command: `/tmp/ipsw dyld extract /tmp/dyld_cache_full/dyld_shared_cache_arm64e <DYLIB>`
+- Need full dylib paths from `ipsw dyld info --dylibs` (slow — 2715 images to parse)
+
+### Standalone Binaries Copied
+- `/tmp/ios_binaries/frameworks/libCoreKE.dylib` (31MB) — CoreKernel Extensions with ccder_* DER encoder
+- `/tmp/ios_binaries/frameworks/libRPAC.dylib` (122KB) — Runtime PAC library
+- All daemons at `/tmp/ios_binaries/apple_private/`
+
+---
+
+## iphonern Improvements (from RE findings)
+
+### Added to iphonern-macho:
+1. **17 new load commands** — LC_DYLD_CHAINED_FIXUPS, LC_BUILD_VERSION, LC_FUNCTION_STARTS, etc.
+2. **22 codesign constants** — CSMAGIC_CODEDIRECTORY, CSSLOT_*, CS_HASHTYPE_*, CS_EXECSEG_*
+3. **12 chained fixup constants** — DYLD_CHAINED_PTR_ARM64E_USERLAND24, etc.
+4. **Chained fixup parser** — full LC_DYLD_CHAINED_FIXUPS parsing
+5. **PAC constants** — RET, BRAB_PREFIX, BRAA_PREFIX, PACIASP, PACIBSP, AUTIASP, AUTIBSP
+6. **PAC detection** — is_brab(), is_braa(), is_pac_branch(), is_pac_sign(), is_ret()
+7. **Entitlement injection** — inject_entitlements() replaces XML in superblob
+8. **Load command insertion** — insert_load_command() + build_dylib_load_command()
+9. **Protocol constants** — FairPlay v2, lockdownd SRP, keybag types/protection classes
+
+### Added to iphonern-patch:
+- **PacBypassPatchOp** — BRAB/BRAA → RET (the technique we invented)
+- **PacStripPatchOp** — PACIASP/PACIBSP → NOP
+
+### Remaining iphonern work:
+- DER ASN.1 entitlement encoder (ccder_* functions found in libCoreKE.dylib)
+- SRP protocol implementation (math: modular exponentiation)
+- Keybag TLV parser + AES-wrap key unwrapping
+- FairPlay v2 session protocol
+
+---
+
+## Tool Inventory (238 total)
 
 ### Original (181 tools)
 Database info, segments, functions, decompilation, xrefs, strings, imports, exports, types, structs, enums, microcode, control flow, bookmarks, comments, names, frames, search, navigation, memory, instructions, callers, switches, jumptables, wide values, metadata, patching, undo, problems, fixups, demangling, bin search, register search, scripts, debugger, auto analysis, entry points, dirtree, import entry, offsets, decl compiler, snippets, read bytes, metadata backup, function context, database ops, decompile_all, batch operations.
 
-### Added This Session (54 new tools)
+### Added This Session (57 new tools)
 
 **FLIRT/Signatures:** `list_signatures`, `apply_signature`
 
@@ -280,25 +412,46 @@ Database info, segments, functions, decompilation, xrefs, strings, imports, expo
 
 **Deep Analysis:** `get_vtable_entries`, `get_chained_fixups`, `get_call_info`
 
+**IDAPython:** `run_python`, `run_python_expr`
+
+**Force Decompile:** `force_decompile` (standalone, plus integrated into `decompile_function`)
+
 ---
 
 ## Decompilation Dump Locations
 
+### Persistent (~/VulnerabilityResearch/ida-pro/)
 ```
-/tmp/fairplay/all/          6,662 files  268K lines  fairplaydeviceidentityd
-/tmp/hexx64_decompiler/all/ 2,375 files  242K lines  Hex-Rays x64 decompiler
-/tmp/arm_proc/all/            685 files   78K lines  ARM processor module
-/tmp/pc_proc/all/             681 files   78K lines  x86 processor module
-/tmp/objc_plugin/all/         313 files   20K lines  ObjC plugin
-/tmp/pe_loader/all/           210 files   20K lines  PE loader
-/tmp/rtti_plugin/all/          78 files    9K lines  RTTI plugin
-/tmp/macho/                    40 files   24K lines  Mach-O loader
-/tmp/dirtree/                  34 files              dirtree system
-/tmp/indexer_*.c               11 files              indexer pipeline
-Total:                     ~11,100 files ~739K lines
+fairplayd_h2/all/       34,903 files  1,109K lines  FairPlay daemon v2
+securityd/all/          12,001 files    372K lines  keychain/cert management
+fairplay/all/            6,662 files    268K lines  fairplaydeviceidentityd
+fairplay/crypto_real_pseudo/  37 files              FairPlay crypto (real C pseudocode)
+fairplay/crypto_microcode/    37 files   34K lines  FairPlay crypto (Hex-Rays microcode)
+fairplay/crypto/              37 files   11K lines  FairPlay crypto (ARM64 disassembly)
+hexx64_decompiler/all/   2,375 files    242K lines  Hex-Rays x64 decompiler
+lockdownd/all/           1,584 files     78K lines  device pairing
+installd/all/            1,931 files     59K lines  app installation
+arm_proc/all/              685 files     78K lines  ARM processor module
+pc_proc/all/               681 files     78K lines  x86 processor module
+keybagd/all/               740 files     30K lines  key management
+amfid/all/                 417 files     10K lines  code signing enforcement
+objc_plugin/all/           313 files     20K lines  ObjC plugin
+pe_loader/all/             210 files     20K lines  PE loader
+rtti_plugin/all/            78 files      9K lines  RTTI plugin
+macho/                      40 files     24K lines  Mach-O loader
+ida_binaries/                             166MB     all IDA .so files
+libCoreKE.dylib                            31MB     CoreKernel Extensions (ccder_* DER)
+libRPAC.dylib                             122KB     Runtime PAC library
 ```
 
-All binaries also copied to `/tmp/ida_binaries/` (166MB) for future analysis.
+### Temporary (/tmp/)
+```
+dyld_cache_full/          3.3GB  46 files  iOS 16.4 dyld shared cache (arm64e)
+ios_binaries/apple_private/                all iOS daemons from device
+ipsw                       86MB           ipsw v3.1.671 (dyld cache extraction tool)
+```
+
+### Total: ~62,600 files, ~2,437,000 lines of decompiled code
 
 ---
 
