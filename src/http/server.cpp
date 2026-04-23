@@ -1,65 +1,10 @@
 #include "http/server.hpp"
 #include <iostream>
 #include <chrono>
-#include <cstdlib>
-#include <random>
-#include <sstream>
-#include <iomanip>
 
 constexpr const char* MCP_PROTOCOL_VERSION = "2025-11-25";
 constexpr const char* MCP_PROTOCOL_VERSION_HEADER = "MCP-Protocol-Version";
 namespace ida_mcp::http {
-
-    namespace {
-        std::string generate_random_api_key() {
-            std::random_device rd;
-            std::mt19937_64 gen(rd());
-            std::uniform_int_distribution<uint64_t> dist;
-            std::ostringstream oss;
-            oss << std::hex << std::setfill('0')
-                << std::setw(16) << dist(gen)
-                << std::setw(16) << dist(gen);
-            return oss.str();
-        }
-
-        std::string get_api_key() {
-            const char *env_key = std::getenv("IDA_MCP_API_KEY");
-            if (env_key && *env_key) {
-                return env_key;
-            }
-            static const std::string generated = []() {
-                std::string key = generate_random_api_key();
-                std::cerr << "MCP Server: no IDA_MCP_API_KEY set - generated random key for this session:\n"
-                          << "  " << key << "\n"
-                          << "  Pass header:  Authorization: Bearer " << key << "\n"
-                          << "  Set IDA_MCP_API_KEY env var to a fixed value to skip this.\n";
-                return key;
-            }();
-            return generated;
-        }
-
-        bool validate_auth(const beast::http::request<beast::http::string_body>& req,
-                          const std::string& expected_key) {
-            if (expected_key.empty()) {
-                return true;
-            }
-
-            auto it = req.find(beast::http::field::authorization);
-            if (it == req.end()) {
-                return false;
-            }
-
-            std::string auth_header(it->value());
-            const std::string bearer_prefix = "Bearer ";
-            if (auth_header.size() <= bearer_prefix.size() ||
-                auth_header.compare(0, bearer_prefix.size(), bearer_prefix) != 0) {
-                return false;
-            }
-
-            std::string token = auth_header.substr(bearer_prefix.size());
-            return token == expected_key;
-        }
-    } // anonymous namespace
 
     HttpServer::HttpServer(const std::string &address, uint16_t port, mcp::McpServer &mcp_server)
         : address_(address)
@@ -219,13 +164,6 @@ namespace ida_mcp::http {
         if (req.target() != "/mcp" && req.target() != "/") {
             return make_response(beast::http::status::not_found,
                                  R"({"error":"Not found"})");
-        }
-
-        // Authentication check (if IDA_MCP_API_KEY is set)
-        static const std::string api_key = get_api_key();
-        if (!validate_auth(req, api_key)) {
-            return make_response(beast::http::status::unauthorized,
-                                 R"({"error":"Unauthorized: Invalid or missing API key"})");
         }
 
         try {
