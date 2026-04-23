@@ -139,27 +139,47 @@ inline bool is_valid_ea(ea_t addr) {
 //
 // IDA 9.3sp1 partially fixed this (release notes: "golang: fixed infinite loop when
 // processing structs with self-referential pointer cycles") but the fix covers only
-// STRUCT cycles. Go generic-shape INTERFACE cycles (go.shape.interface__...) still
-// trigger the same O(2^N) / infinite recursion in libida's type resolver and the
-// golang.so / idaclang.so plugins.
+// STRUCT cycles. Go's type system uses @N backreference notation for cycles in shape
+// names (e.g. `go.shape.interface { M() @0 }`), but IDA's golang.so / idaclang.so
+// plugins don't understand backreferences and re-expand them → O(2^N) / infinite
+// recursion in libida's type resolver.
+//
+// Symbol prefixes sourced from Go compiler source (go/src/cmd/compile/internal/):
+//   go.shape.*          shape types for generics (types/type.go:1988, noder/reader.go:947)
+//   go:itab.*           interface method tables (reflectdata/reflect.go:602) — NOTE: colon not dot
+//   go:info.*           DWARF type DIEs (cmd/internal/dwarf/dwarf.go:24)
+//   go:constinfo.*      DWARF const info (dwarf.go:28)
+//   go:cuinfo.*         compilation unit info (dwarf.go:32)
+//   type..*             type descriptors (types/type.go:1958)
+//   type..noalg.*       types without hash/eq (types/type.go:1969)
+//   type:.importpath.*  import path metadata (reflectdata/reflect.go:1383)
+//   type:.gcmask.*      GC bitmasks (reflectdata/reflect.go:1313)
+//   .dict.*             generic dictionaries (objabi/util.go:17)
+//   .inst.*             generic instantiations (reflectdata/reflect.go:1404)
+//   .hashfunc.*         compiler-generated hash closures (reflectdata/alg.go:60)
+//   .eqfunc.*           compiler-generated equality closures (reflectdata/alg.go:296)
+//   .autotmp_*          compiler temporaries (typecheck/dcl.go:95)
 //
 // Two checks, cheap-to-expensive:
-//   1. Name regex - catches synthetic compiler symbols directly (go.shape.*, go.itab.*, etc.)
-//   2. Cached tinfo string - catches user functions whose prototypes REFERENCE shape-interface types
-//      (e.g. vendor_.../chacha20Poly1305Open - not a shape symbol itself, but takes one as an arg)
+//   1. Name regex — catches all compiler-generated prefixes above
+//   2. Cached tinfo string — catches user functions whose prototypes REFERENCE shape types
 //
-// THREAD-SAFETY: Must be called from IDA's main thread. get_tinfo() / tinfo_t::print()
-// are IDA SDK APIs that require main-thread context. All current callers are inside
-// ida_mcp::execute_on_main_thread() lambdas (see common.hpp:execute_on_main_thread),
-// which dispatches via execute_sync(req, MFF_WRITE) onto the IDA main thread.
+// THREAD-SAFETY: Must be called from IDA's main thread (get_tinfo / tinfo_t::print).
 inline bool is_go_pathological_func(func_t* func, std::string* reason = nullptr) {
     if (!func) return false;
 
     qstring fname;
     if (get_func_name(&fname, func->start_ea) <= 0) return false;
 
+    // Covers: go.shape.*, go:itab.*, go:info.*, go:constinfo.*, go:cuinfo.*,
+    //         go:string.*, go:track.*, go:func.*, go:map.*,
+    //         type..*, type..noalg.*, type:.importpath.*, type:.gcmask.*,
+    //         .dict.*, .inst.*, .hashfunc.*, .eqfunc.*, .hash.*, .eq.*,
+    //         .gcmask.*, .autotmp_*
     static const std::regex go_generated{
-        R"((?:^|[._])go\.(?:shape|itab|info|map|func)\.|^type\.\.|\.\.(?:dict|autotmp_))"};
+        R"((?:^|[._])go[.:](?:shape|itab|info|constinfo|cuinfo|string|track|func|map|builtin|plugin)\b)"
+        R"(|^type[.:][.:.])"
+        R"(|^\.(?:dict|inst|hashfunc|eqfunc|hash|eq|gcmask|autotmp_))"};
     if (std::regex_search(fname.c_str(), go_generated)) {
         if (reason) *reason = std::string("Go compiler-generated symbol: ") + fname.c_str();
         return true;
@@ -169,8 +189,10 @@ inline bool is_go_pathological_func(func_t* func, std::string* reason = nullptr)
     if (get_tinfo(&tif, func->start_ea)) {
         qstring tstr;
         tif.print(&tstr);
-        if (tstr.find("go.shape.") != qstring::npos) {
-            if (reason) *reason = std::string("signature references go.shape type: ") + tstr.c_str();
+        if (tstr.find("go.shape.") != qstring::npos
+            || tstr.find("go:itab.") != qstring::npos
+            || tstr.find("go:info.") != qstring::npos) {
+            if (reason) *reason = std::string("signature references Go shape/itab/info type: ") + tstr.c_str();
             return true;
         }
     }
