@@ -17,19 +17,36 @@ namespace ida_mcp::tools::decompile_all {
                 throw std::runtime_error("Hexrays decompiler not available");
 
             eavec_t funcaddrs;
-            bool use_specific = false;
+            size_t skipped_pathological = 0;
 
             if (params.contains("addresses") && params["addresses"].is_array()) {
-                use_specific = true;
                 for (const auto &addr_json: params["addresses"]) {
                     if (!addr_json.is_string())
                         continue;
                     auto ea = parse_ea(addr_json.get<std::string>());
-                    if (ea.has_value())
-                        funcaddrs.push_back(ea.value());
+                    if (!ea.has_value())
+                        continue;
+                    if (func_t *f = get_func(ea.value());
+                        f != nullptr && ida_mcp::is_go_pathological_func(f)) {
+                        ++skipped_pathological;
+                        continue;
+                    }
+                    funcaddrs.push_back(ea.value());
                 }
                 if (funcaddrs.empty())
-                    throw std::runtime_error("No valid addresses provided");
+                    throw std::runtime_error("No valid addresses provided (all filtered as go.shape-pathological)");
+            } else {
+                size_t nfuncs = get_func_qty();
+                for (size_t i = 0; i < nfuncs; i++) {
+                    func_t *f = getn_func(i);
+                    if (f == nullptr) continue;
+                    if ((f->flags & FUNC_LIB) != 0) continue;
+                    if (ida_mcp::is_go_pathological_func(f)) {
+                        ++skipped_pathological;
+                        continue;
+                    }
+                    funcaddrs.push_back(f->start_ea);
+                }
             }
 
             int flags = VDRUN_SILENT | VDRUN_NEWFILE | VDRUN_MAYSTOP;
@@ -42,7 +59,7 @@ namespace ida_mcp::tools::decompile_all {
 
             bool ok = decompile_many(
                 tmp_path.c_str(),
-                use_specific ? &funcaddrs : nullptr,
+                &funcaddrs,
                 flags);
 
             if (!ok) {
@@ -77,10 +94,8 @@ namespace ida_mcp::tools::decompile_all {
             result["pseudocode"] = content;
             result["truncated"] = truncated;
             result["size_bytes"] = content.size();
-            if (use_specific)
-                result["function_count"] = funcaddrs.size();
-            else
-                result["function_count"] = get_func_qty();
+            result["function_count"] = funcaddrs.size();
+            result["skipped_pathological"] = skipped_pathological;
 
             return result;
 #else

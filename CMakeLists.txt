@@ -31,7 +31,7 @@ if(NOT DEFINED IDA_INSTALL_DIR)
     if(DEFINED ENV{IDA_INSTALL_DIR})
         set(IDA_INSTALL_DIR "$ENV{IDA_INSTALL_DIR}" CACHE PATH "IDA installation directory")
     else()
-        set(IDA_INSTALL_DIR "$ENV{HOME}/Downloads/Software/IDAPro/ida-pro-9.33" CACHE PATH "IDA installation directory (default)")
+        set(IDA_INSTALL_DIR "$ENV{HOME}/Downloads/Software/IDAPro/ida-pro-9.3sp1" CACHE PATH "IDA installation directory (default)")
     endif()
 endif()
 
@@ -45,7 +45,7 @@ endif()
 # =============================================================================
 
 # Hex-Rays decompiler support (optional - set OFF if you don't have Hex-Rays license)
-option(WITH_HEXRAYS "Build with Hex-Rays decompiler support" OFF)
+option(WITH_HEXRAYS "Build with Hex-Rays decompiler support" ON)
 
 # =============================================================================
 # Include Directories
@@ -167,6 +167,7 @@ set(TOOLS_SOURCES
         src/tools/source_info.cpp
         src/tools/objc_analysis.cpp
         src/tools/objc_deep.cpp
+        src/tools/xtensa_options.cpp
 )
 
 # Hex-Rays dependent tools (conditionally built)

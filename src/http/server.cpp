@@ -2,24 +2,46 @@
 #include <iostream>
 #include <chrono>
 #include <cstdlib>
+#include <random>
+#include <sstream>
+#include <iomanip>
 
-// MCP Protocol Version (2025-11-25 spec)
 constexpr const char* MCP_PROTOCOL_VERSION = "2025-11-25";
 constexpr const char* MCP_PROTOCOL_VERSION_HEADER = "MCP-Protocol-Version";
 namespace ida_mcp::http {
 
     namespace {
-        // Get optional API key from environment
-        std::string get_api_key() {
-            const char* key = std::getenv("IDA_MCP_API_KEY");
-            return key ? std::string(key) : std::string();
+        std::string generate_random_api_key() {
+            std::random_device rd;
+            std::mt19937_64 gen(rd());
+            std::uniform_int_distribution<uint64_t> dist;
+            std::ostringstream oss;
+            oss << std::hex << std::setfill('0')
+                << std::setw(16) << dist(gen)
+                << std::setw(16) << dist(gen);
+            return oss.str();
         }
 
-        // Validate bearer token from Authorization header
+        std::string get_api_key() {
+            const char *env_key = std::getenv("IDA_MCP_API_KEY");
+            if (env_key && *env_key) {
+                return env_key;
+            }
+            static const std::string generated = []() {
+                std::string key = generate_random_api_key();
+                std::cerr << "MCP Server: no IDA_MCP_API_KEY set - generated random key for this session:\n"
+                          << "  " << key << "\n"
+                          << "  Pass header:  Authorization: Bearer " << key << "\n"
+                          << "  Set IDA_MCP_API_KEY env var to a fixed value to skip this.\n";
+                return key;
+            }();
+            return generated;
+        }
+
         bool validate_auth(const beast::http::request<beast::http::string_body>& req,
                           const std::string& expected_key) {
             if (expected_key.empty()) {
-                return true;  // No auth configured
+                return true;
             }
 
             auto it = req.find(beast::http::field::authorization);
@@ -162,9 +184,8 @@ namespace ida_mcp::http {
             beast::http::response<beast::http::string_body> res{status, req.version()};
             res.set(beast::http::field::server, "IDA-MCP-Server/1.0");
             res.set(beast::http::field::content_type, "application/json");
-            res.set(beast::http::field::access_control_allow_origin, "*");
             res.set(MCP_PROTOCOL_VERSION_HEADER, MCP_PROTOCOL_VERSION);
-            res.keep_alive(false);  // Disable keep-alive for stability
+            res.keep_alive(false);
             res.body() = std::move(body);
             res.prepare_payload();
             return res;
@@ -173,9 +194,8 @@ namespace ida_mcp::http {
         auto make_empty_response = [&req](beast::http::status status) {
             beast::http::response<beast::http::string_body> res{status, req.version()};
             res.set(beast::http::field::server, "IDA-MCP-Server/1.0");
-            res.set(beast::http::field::access_control_allow_origin, "*");
             res.set(MCP_PROTOCOL_VERSION_HEADER, MCP_PROTOCOL_VERSION);
-            res.keep_alive(false);  // Disable keep-alive for stability
+            res.keep_alive(false);
             res.prepare_payload();
             return res;
         };

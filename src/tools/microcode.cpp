@@ -107,6 +107,12 @@ namespace ida_mcp::tools::microcode {
             if (func == nullptr)
                 throw std::runtime_error("Address is not in a function");
 
+            std::string skip_reason;
+            if (ida_mcp::is_go_pathological_func(func, &skip_reason)) {
+                throw std::runtime_error(
+                    "Skipped to avoid Hex-Rays infinite loop (IDA 9.3sp1 golang.so bug): " + skip_reason);
+            }
+
             int maturity_int = MMAT_GLBOPT3;
             if (params.contains("maturity") && params["maturity"].is_number_integer())
                 maturity_int = params["maturity"].get<int>();

@@ -76,5 +76,8 @@ namespace ida_mcp::tools {
         source_info::register_tools(server);
         objc_analysis::register_tools(server);
         objc_deep::register_tools(server);
+
+        // Xtensa processor feature toggles (Code Density, Windowed, MAC16, ...)
+        xtensa_options::register_tools(server);
     }
 } // namespace ida_mcp::tools

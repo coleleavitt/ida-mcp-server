@@ -6,6 +6,7 @@
 #include <memory>
 #include <optional>
 #include <functional>
+#include <regex>
 #include <cerrno>   // For errno
 #include <climits>  // For ULLONG_MAX
 // IDA SDK headers (following idacli.cpp pattern)
@@ -132,6 +133,49 @@ inline std::string get_segment_name(ea_t addr) {
 // Check if address is valid
 inline bool is_valid_ea(ea_t addr) {
     return is_loaded(addr);
+}
+
+// Detect Go-compiler-generated pathological symbols that hang Hex-Rays calc_arglocs.
+//
+// IDA 9.3sp1 partially fixed this (release notes: "golang: fixed infinite loop when
+// processing structs with self-referential pointer cycles") but the fix covers only
+// STRUCT cycles. Go generic-shape INTERFACE cycles (go.shape.interface__...) still
+// trigger the same O(2^N) / infinite recursion in libida's type resolver and the
+// golang.so / idaclang.so plugins.
+//
+// Two checks, cheap-to-expensive:
+//   1. Name regex - catches synthetic compiler symbols directly (go.shape.*, go.itab.*, etc.)
+//   2. Cached tinfo string - catches user functions whose prototypes REFERENCE shape-interface types
+//      (e.g. vendor_.../chacha20Poly1305Open - not a shape symbol itself, but takes one as an arg)
+//
+// THREAD-SAFETY: Must be called from IDA's main thread. get_tinfo() / tinfo_t::print()
+// are IDA SDK APIs that require main-thread context. All current callers are inside
+// ida_mcp::execute_on_main_thread() lambdas (see common.hpp:execute_on_main_thread),
+// which dispatches via execute_sync(req, MFF_WRITE) onto the IDA main thread.
+inline bool is_go_pathological_func(func_t* func, std::string* reason = nullptr) {
+    if (!func) return false;
+
+    qstring fname;
+    if (get_func_name(&fname, func->start_ea) <= 0) return false;
+
+    static const std::regex go_generated{
+        R"((?:^|[._])go\.(?:shape|itab|info|map|func)\.|^type\.\.|\.\.(?:dict|autotmp_))"};
+    if (std::regex_search(fname.c_str(), go_generated)) {
+        if (reason) *reason = std::string("Go compiler-generated symbol: ") + fname.c_str();
+        return true;
+    }
+
+    tinfo_t tif;
+    if (get_tinfo(&tif, func->start_ea)) {
+        qstring tstr;
+        tif.print(&tstr);
+        if (tstr.find("go.shape.") != qstring::npos) {
+            if (reason) *reason = std::string("signature references go.shape type: ") + tstr.c_str();
+            return true;
+        }
+    }
+
+    return false;
 }
 
 // Execute function on IDA's main thread (required for all IDA API calls)

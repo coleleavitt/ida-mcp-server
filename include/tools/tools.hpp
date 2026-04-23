@@ -226,4 +226,8 @@ namespace objc_deep {
     void register_tools(mcp::McpServer& server);
 }
 
+namespace xtensa_options {
+    void register_tools(mcp::McpServer& server);
+}
+
 } // namespace ida_mcp::tools
