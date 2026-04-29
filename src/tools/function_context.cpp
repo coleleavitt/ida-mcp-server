@@ -197,9 +197,10 @@ namespace ida_mcp::tools::function_context {
                 };
             }
 
-            // Get decompilation if requested
             if (include_decompilation) {
 #ifdef HAS_HEXRAYS
+                ida_mcp::tools::cpp_class_recovery::ensure_recovery_done();
+
                 char proc_name_buf[16] = {};
                 get_idp_name(proc_name_buf, sizeof(proc_name_buf));
                 const bool is_cli = std::string_view{proc_name_buf} == "cli";

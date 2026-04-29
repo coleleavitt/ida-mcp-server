@@ -30,6 +30,7 @@
 #include <demangle.hpp>
 #include <funcs.hpp>
 #include <name.hpp>
+#include <netnode.hpp>
 #include <segment.hpp>
 #include <typeinf.hpp>
 #include <xref.hpp>
@@ -376,11 +377,78 @@ const char *kind_str(TypeInfoKind k) {
     return "?";
 }
 
-json handle_recover_cpp_classes(const json &params) {
-    bool dry_run = params.value("dry_run", false);
-    bool rename_methods = params.value("rename_methods", true);
+constexpr const char *kRecoveryMarkerNode = "$ ida_mcp_cpp_recovery_done";
 
-    if (!detect_itanium_abi()) {
+bool recovery_marker_present() {
+    netnode nn(kRecoveryMarkerNode);
+    return exist(nn);
+}
+
+void set_recovery_marker() {
+    netnode nn;
+    nn.create(kRecoveryMarkerNode);
+}
+
+void clear_recovery_marker() {
+    netnode nn(kRecoveryMarkerNode);
+    if (exist(nn)) nn.kill();
+}
+
+struct RecoveryResult {
+    bool itanium_detected = false;
+    bool ran = false;
+    int typeinfos_parsed = 0;
+    int vtables_found = 0;
+    ApplyStats stats;
+    std::vector<TypeInfoNode> nodes;
+    std::vector<std::pair<const TypeInfoNode*, VTableInfo>> vtables;
+};
+
+RecoveryResult run_recovery_pipeline(bool dry_run, bool rename_methods) {
+    RecoveryResult r;
+    if (!detect_itanium_abi()) return r;
+    r.itanium_detected = true;
+    r.ran = true;
+
+    r.nodes = find_all_typeinfo_nodes();
+    r.typeinfos_parsed = (int)r.nodes.size();
+
+    std::map<ea_t, const TypeInfoNode*> by_addr;
+    std::set<ea_t> ti_addrs;
+    for (const auto &n : r.nodes) {
+        by_addr[n.address] = &n;
+        ti_addrs.insert(n.address);
+    }
+
+    for (auto &vt : find_vtables_for_typeinfo_set(ti_addrs)) {
+        auto it = by_addr.find(vt.typeinfo);
+        if (it == by_addr.end()) continue;
+        r.vtables.emplace_back(it->second, std::move(vt));
+    }
+    r.vtables_found = (int)r.vtables.size();
+
+    if (dry_run) {
+        r.stats.classes_recovered = (int)r.nodes.size();
+        r.stats.vtables_named = (int)r.vtables.size();
+        for (const auto &p : r.vtables) {
+            r.stats.methods_renamed += (int)p.second.vfuncs.size();
+        }
+    } else {
+        r.stats = apply_recovery(r.nodes, r.vtables, rename_methods);
+    }
+    return r;
+}
+
+json handle_recover_cpp_classes(const json &params) {
+    bool dry_run        = params.value("dry_run", false);
+    bool rename_methods = params.value("rename_methods", true);
+    bool force          = params.value("force", false);
+
+    bool was_marked = recovery_marker_present();
+    if (force) clear_recovery_marker();
+
+    auto r = run_recovery_pipeline(dry_run, rename_methods);
+    if (!r.itanium_detected) {
         return json{
             {"itanium_abi_detected", false},
             {"note", "No __cxxabiv1 typeinfo vtables found. This binary does not "
@@ -392,37 +460,11 @@ json handle_recover_cpp_classes(const json &params) {
             {"methods_renamed", 0}
         };
     }
-
-    std::vector<TypeInfoNode> typeinfo_nodes = find_all_typeinfo_nodes();
-
-    std::map<ea_t, const TypeInfoNode*> by_addr;
-    std::set<ea_t> ti_addrs;
-    for (const auto &n : typeinfo_nodes) {
-        by_addr[n.address] = &n;
-        ti_addrs.insert(n.address);
-    }
-
-    std::vector<std::pair<const TypeInfoNode*, VTableInfo>> all_vtables;
-    for (auto &vt : find_vtables_for_typeinfo_set(ti_addrs)) {
-        auto it = by_addr.find(vt.typeinfo);
-        if (it == by_addr.end()) continue;
-        all_vtables.emplace_back(it->second, std::move(vt));
-    }
-
-    ApplyStats stats;
-    if (dry_run) {
-        stats.classes_recovered = (int)typeinfo_nodes.size();
-        stats.vtables_named = (int)all_vtables.size();
-        for (const auto &p : all_vtables) {
-            stats.methods_renamed += (int)p.second.vfuncs.size();
-        }
-    } else {
-        stats = apply_recovery(typeinfo_nodes, all_vtables, rename_methods);
-    }
+    if (!dry_run) set_recovery_marker();
 
     json sample = json::array();
-    for (size_t i = 0; i < typeinfo_nodes.size() && i < 20; i++) {
-        const auto &n = typeinfo_nodes[i];
+    for (size_t i = 0; i < r.nodes.size() && i < 20; i++) {
+        const auto &n = r.nodes[i];
         sample.push_back({
             {"typeinfo_address", format_ea(n.address)},
             {"class_name",       n.class_name.c_str()},
@@ -433,13 +475,15 @@ json handle_recover_cpp_classes(const json &params) {
 
     return json{
         {"itanium_abi_detected", true},
-        {"typeinfos_parsed",     typeinfo_nodes.size()},
-        {"vtables_found",        all_vtables.size()},
-        {"classes_recovered",    stats.classes_recovered},
-        {"vtables_named",        stats.vtables_named},
-        {"methods_renamed",      stats.methods_renamed},
+        {"typeinfos_parsed",     r.typeinfos_parsed},
+        {"vtables_found",        r.vtables_found},
+        {"classes_recovered",    r.stats.classes_recovered},
+        {"vtables_named",        r.stats.vtables_named},
+        {"methods_renamed",      r.stats.methods_renamed},
         {"dry_run",              dry_run},
         {"rename_methods",       rename_methods},
+        {"force",                force},
+        {"was_already_marked",   was_marked},
         {"sample_classes",       sample}
     };
 }
@@ -496,6 +540,19 @@ json handle_list_recovered_vtables(const json &params) {
 }
 
 }  // anonymous namespace
+
+void ensure_recovery_done() noexcept {
+    try {
+        if (recovery_marker_present()) return;
+        if (!detect_itanium_abi()) {
+            set_recovery_marker();
+            return;
+        }
+        (void)run_recovery_pipeline(/*dry_run=*/false, /*rename_methods=*/true);
+        set_recovery_marker();
+    } catch (...) {
+    }
+}
 
 void register_tools(mcp::McpServer &server) {
     {

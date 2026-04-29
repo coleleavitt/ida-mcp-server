@@ -16,6 +16,8 @@ namespace ida_mcp::tools::decompile_all {
             if (!init_hexrays_plugin())
                 throw std::runtime_error("Hexrays decompiler not available");
 
+            ida_mcp::tools::cpp_class_recovery::ensure_recovery_done();
+
             eavec_t funcaddrs;
             size_t skipped_pathological = 0;
 

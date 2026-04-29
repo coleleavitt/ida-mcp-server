@@ -96,6 +96,8 @@ namespace ida_mcp::tools::microcode {
             if (!init_hexrays_plugin())
                 throw std::runtime_error("Hexrays decompiler not available");
 
+            ida_mcp::tools::cpp_class_recovery::ensure_recovery_done();
+
             if (!params.contains("address") || !params["address"].is_string())
                 throw std::runtime_error("Missing required parameter: address");
 

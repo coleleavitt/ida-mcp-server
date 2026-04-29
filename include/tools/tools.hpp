@@ -232,6 +232,8 @@ namespace xtensa_options {
 
 namespace cpp_class_recovery {
     void register_tools(mcp::McpServer& server);
+
+    void ensure_recovery_done() noexcept;
 }
 
 } // namespace ida_mcp::tools

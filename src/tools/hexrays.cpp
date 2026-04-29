@@ -45,10 +45,11 @@ namespace ida_mcp::tools::hexrays {
 
         ea_t ea = addr.value();
 
-        // Check if hexrays is available
         if (!init_hexrays_plugin()) {
             throw std::runtime_error("Hexrays decompiler not available (check license)");
         }
+
+        ida_mcp::tools::cpp_class_recovery::ensure_recovery_done();
 
         func_t *func = get_func(ea);
         if (func == nullptr) {
@@ -436,12 +437,12 @@ namespace ida_mcp::tools::hexrays {
 
     static json export_all_decompiled(const json &params) {
 #ifdef HAS_HEXRAYS
-        // Check if hexrays is available
         if (!init_hexrays_plugin()) {
             throw std::runtime_error("Hexrays decompiler not available (check license)");
         }
 
-        // Get output directory - default to current working directory
+        ida_mcp::tools::cpp_class_recovery::ensure_recovery_done();
+
         std::string output_dir = ".";
         if (params.contains("output_dir") && params["output_dir"].is_string()) {
             output_dir = params["output_dir"].get<std::string>();
