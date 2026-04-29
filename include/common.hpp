@@ -177,9 +177,10 @@ inline bool is_go_pathological_func(func_t* func, std::string* reason = nullptr)
     //         .dict.*, .inst.*, .hashfunc.*, .eqfunc.*, .hash.*, .eq.*,
     //         .gcmask.*, .autotmp_*
     static const std::regex go_generated{
-        R"((?:^|[._])go[.:](?:shape|itab|info|constinfo|cuinfo|string|track|func|map|builtin|plugin)\b)"
-        R"(|^type[.:][.:.])"
-        R"(|^\.(?:dict|inst|hashfunc|eqfunc|hash|eq|gcmask|autotmp_))"};
+        R"((?:^|[._])go[.:](?:shape|itab|info|constinfo|cuinfo|string|track|func|map|builtin|plugin)\.)"
+        R"(|^type[.:]\.)"
+        R"(|^\.(?:dict|inst|hashfunc|eqfunc|hash|eq|gcmask)\.)"
+        R"(|^\.autotmp_)"};
     if (std::regex_search(fname.c_str(), go_generated)) {
         if (reason) *reason = std::string("Go compiler-generated symbol: ") + fname.c_str();
         return true;
