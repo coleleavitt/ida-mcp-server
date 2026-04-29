@@ -337,7 +337,68 @@ namespace ida_mcp::tools::hexrays {
             }
 
             qstring err_str = hf.desc();
-            throw std::runtime_error(std::string("Decompilation failed: ") + err_str.c_str());
+
+            qstring fname;
+            get_func_name(&fname, func->start_ea);
+            qstring raw_disasm;
+            ea_t addr = func->start_ea;
+            int instr_count = 0;
+            const int MAX_RAW_INSTRS = 4096;
+            while (addr < func->end_ea && addr != BADADDR && instr_count < MAX_RAW_INSTRS) {
+                qstring line;
+                generate_disasm_line(&line, addr, GENDSM_REMOVE_TAGS);
+                raw_disasm.cat_sprnt("//   %s %s\n", format_ea(addr).c_str(), line.c_str());
+                ++instr_count;
+                ea_t next = next_head(addr, func->end_ea);
+                if (next == BADADDR || next <= addr) break;
+                addr = next;
+            }
+            bool truncated = (instr_count >= MAX_RAW_INSTRS);
+
+            qstring stub;
+            stub.sprnt(
+                "// ============================================================\n"
+                "// RAW DISASSEMBLY FALLBACK\n"
+                "// ============================================================\n"
+                "// Hex-Rays decompilation failed: %s\n"
+                "// Address:        %s\n"
+                "// Name:           %s\n"
+                "// Function size:  %llu bytes (%d instructions%s)\n"
+                "// Why this fallback: tier-1 (decompile) and tier-2/3 (Python\n"
+                "//   patch + microcode lift) both failed. This is the last\n"
+                "//   resort - raw disassembly emitted as comments so the\n"
+                "//   analyst still has visibility on the function body.\n"
+                "// ============================================================\n"
+                "//\n"
+                "// Instructions:\n"
+                "%s"
+                "// ============================================================\n"
+                "\n"
+                "void %s(/* signature unknown */)\n"
+                "{\n"
+                "    // see disassembly above\n"
+                "}\n",
+                err_str.c_str(),
+                format_ea(ea).c_str(),
+                fname.empty() ? "<anonymous>" : fname.c_str(),
+                (unsigned long long)func->size(),
+                instr_count,
+                truncated ? ", truncated" : "",
+                raw_disasm.empty() ? "//   <no instructions decoded>\n" : raw_disasm.c_str(),
+                fname.empty() ? "raw_disasm_func" : fname.c_str());
+
+            return json{
+                {"address",              format_ea(ea)},
+                {"function_name",        fname.c_str()},
+                {"pseudocode",           stub.c_str()},
+                {"signature",            "unknown"},
+                {"decompilation_method", "raw_disasm_fallback"},
+                {"hexrays_error",        err_str.c_str()},
+                {"size_bytes",           (unsigned long long)func->size()},
+                {"instr_count",          instr_count},
+                {"instr_truncated",      truncated},
+                {"lvars_count",          0}
+            };
         }
 
         const strvec_t &sv = cfunc->get_pseudocode();
