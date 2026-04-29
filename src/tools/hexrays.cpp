@@ -50,10 +50,110 @@ namespace ida_mcp::tools::hexrays {
             throw std::runtime_error("Hexrays decompiler not available (check license)");
         }
 
-        // Get function
         func_t *func = get_func(ea);
         if (func == nullptr) {
             throw std::runtime_error("Address is not in a function");
+        }
+
+        if ((func->flags & FUNC_THUNK) != 0) {
+            qstring fname;
+            get_func_name(&fname, func->start_ea);
+
+            ea_t fptr = BADADDR;
+            ea_t target = calc_thunk_func_target(func, &fptr);
+            qstring tname;
+            if (target != BADADDR)
+                get_func_name(&tname, target);
+
+            qstring import_name;
+            if (fptr != BADADDR) {
+                qstring slot_name;
+                if (get_name(&slot_name, fptr) > 0) {
+                    import_name = slot_name;
+                }
+                if (target == BADADDR) {
+                    ea_t indirect_target = get_qword(fptr);
+                    if (is_loaded(indirect_target)) {
+                        target = indirect_target;
+                        if (tname.empty())
+                            get_func_name(&tname, indirect_target);
+                    }
+                }
+            }
+
+            qstring disasm;
+            ea_t addr = func->start_ea;
+            int instr_count = 0;
+            while (addr < func->end_ea && addr != BADADDR && instr_count < 16) {
+                qstring line;
+                generate_disasm_line(&line, addr, GENDSM_REMOVE_TAGS);
+                disasm.cat_sprnt("//   %s %s\n", format_ea(addr).c_str(), line.c_str());
+                ea_t next = next_head(addr, func->end_ea);
+                if (next == BADADDR || next <= addr) break;
+                addr = next;
+                ++instr_count;
+            }
+
+            qstring sig_str;
+            tinfo_t target_tif;
+            if (target != BADADDR && get_tinfo(&target_tif, target)) {
+                target_tif.print(&sig_str);
+            }
+
+            qstring stub;
+            stub.sprnt(
+                "// ============================================================\n"
+                "// THUNK / TRAMPOLINE\n"
+                "// ============================================================\n"
+                "// Address:         %s\n"
+                "// Name:            %s\n"
+                "// Size:            %llu bytes (%d instructions)\n"
+                "// Disassembly:\n"
+                "%s"
+                "//\n"
+                "// Resolved target: %s\n"
+                "// Target address:  %s\n"
+                "// GOT/IAT slot:    %s\n"
+                "// Slot symbol:     %s\n"
+                "// Target type:     %s\n"
+                "// ============================================================\n"
+                "\n"
+                "%s %s(/* see target signature */)\n"
+                "{\n"
+                "    // Tail-call to %s via %s indirection\n"
+                "    return %s(/* forwarded args */);\n"
+                "}\n",
+                format_ea(ea).c_str(),
+                fname.empty() ? "<anonymous>" : fname.c_str(),
+                (unsigned long long)func->size(),
+                instr_count,
+                disasm.empty() ? "//   <empty>\n" : disasm.c_str(),
+                tname.empty() ? "<unresolved>" : tname.c_str(),
+                target != BADADDR ? format_ea(target).c_str() : "BADADDR",
+                fptr != BADADDR ? format_ea(fptr).c_str() : "(none)",
+                import_name.empty() ? "<none>" : import_name.c_str(),
+                sig_str.empty() ? "<no type info>" : sig_str.c_str(),
+                sig_str.empty() ? "void" : "/* see target sig */",
+                fname.empty() ? "thunk_func" : fname.c_str(),
+                tname.empty() ? "<unresolved target>" : tname.c_str(),
+                fptr != BADADDR ? "GOT/IAT" : "direct jump",
+                tname.empty() ? "/* unresolved */" : tname.c_str());
+
+            return json{
+                {"address",              format_ea(ea)},
+                {"function_name",        fname.c_str()},
+                {"pseudocode",           stub.c_str()},
+                {"signature",            sig_str.empty() ? "void(void)" : sig_str.c_str()},
+                {"decompilation_method", "thunk_disasm"},
+                {"is_thunk",             true},
+                {"thunk_size_bytes",     (unsigned long long)func->size()},
+                {"thunk_instr_count",    instr_count},
+                {"thunk_target",         target != BADADDR ? format_ea(target) : ""},
+                {"thunk_target_name",    tname.c_str()},
+                {"thunk_got_slot",       fptr != BADADDR ? format_ea(fptr) : ""},
+                {"thunk_import_name",    import_name.c_str()},
+                {"lvars_count",          0}
+            };
         }
 
         std::string skip_reason;
@@ -62,7 +162,6 @@ namespace ida_mcp::tools::hexrays {
                 "Skipped to avoid Hex-Rays infinite loop (IDA 9.3sp1 golang.so bug): " + skip_reason);
         }
 
-        // Decompile
         hexrays_failure_t hf;
         cfuncptr_t cfunc = decompile(func, &hf, DECOMP_NO_WAIT);
 
@@ -162,30 +261,30 @@ namespace ida_mcp::tools::hexrays {
                     try { fb = json::parse(json_str.c_str()); } catch (...) {}
                 }
 
-                if (fb.value("tier2", false)) {
+                if (fb.is_object() && fb.value("tier2", false)) {
                     qstring func_name;
                     get_func_name(&func_name, func->start_ea);
                     return json{
                         {"address", format_ea(ea)},
                         {"function_name", func_name.c_str()},
-                        {"pseudocode", fb["pseudo"]},
+                        {"pseudocode", fb.value("pseudo", "")},
                         {"signature", nullptr},
                         {"decompilation_method", "patched_decompile"},
-                        {"patches_applied", fb["patched"]},
+                        {"patches_applied", fb.value("patched", 0)},
                         {"lvars_count", 0}
                     };
                 }
 
-                if (fb.value("tier3", false)) {
+                if (fb.is_object() && fb.value("tier3", false)) {
                     qstring func_name;
                     get_func_name(&func_name, func->start_ea);
                     return json{
                         {"address", format_ea(ea)},
                         {"function_name", func_name.c_str()},
-                        {"pseudocode", fb["pseudo"]},
+                        {"pseudocode", fb.value("pseudo", "")},
                         {"signature", nullptr},
                         {"decompilation_method", "microcode_lift"},
-                        {"microcode_blocks", fb["blocks"]},
+                        {"microcode_blocks", fb.value("blocks", 0)},
                         {"lvars_count", 0}
                     };
                 }
@@ -627,16 +726,21 @@ namespace ida_mcp::tools::hexrays {
                 result["function"] = fname.c_str();
                 result["size"] = func->size();
 
-                if (py_result.contains("pseudocode")) {
+                if (py_result.is_object() && py_result.contains("pseudocode")) {
                     result["method"] = "hexrays";
                     result["pseudocode"] = py_result["pseudocode"];
-                } else if (py_result.contains("microcode")) {
+                } else if (py_result.is_object() && py_result.contains("microcode")) {
                     result["method"] = "microcode_lift";
-                    result["blocks"] = py_result["blocks"];
+                    result["blocks"] = py_result.value("blocks", 0);
                     result["microcode"] = py_result["microcode"];
                 } else {
                     result["method"] = "failed";
-                    result["error"] = py_result.value("error", errbuf.c_str());
+                    if (py_result.is_object())
+                        result["error"] = py_result.value("error", errbuf.c_str());
+                    else
+                        result["error"] = errbuf.empty()
+                            ? std::string("decompile failed and python fallback produced no output")
+                            : std::string(errbuf.c_str());
                 }
 
                 return result;
