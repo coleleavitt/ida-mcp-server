@@ -196,6 +196,47 @@ inline bool is_go_pathological_func(func_t* func, std::string* reason = nullptr)
             if (reason) *reason = std::string("signature references Go shape/itab/info type: ") + tstr.c_str();
             return true;
         }
+
+        constexpr int kMaxGenericDepth = 8;
+        int depth = 0;
+        int max_depth = 0;
+        for (size_t i = 0; i < tstr.size(); ++i) {
+            char c = tstr[i];
+            if (c == '<') { ++depth; if (depth > max_depth) max_depth = depth; }
+            else if (c == '>') --depth;
+        }
+        if (max_depth >= kMaxGenericDepth) {
+            if (reason) {
+                char buf[64];
+                qsnprintf(buf, sizeof(buf), "%d", max_depth);
+                *reason = std::string("type signature has ") + buf
+                       + " levels of nested generics (Hex-Rays mop_t::for_all_ops "
+                         "infinite recursion risk - sub_127FE0): " + tstr.c_str();
+            }
+            return true;
+        }
+    }
+
+    constexpr int kMaxRustGenericMarkers = 8;
+    int rust_markers = 0;
+    {
+        std::string_view sv(fname.c_str(), fname.size());
+        size_t pos = 0;
+        while ((pos = sv.find("_LT_", pos)) != std::string_view::npos) {
+            ++rust_markers;
+            pos += 4;
+            if (rust_markers >= kMaxRustGenericMarkers) break;
+        }
+    }
+    if (rust_markers >= kMaxRustGenericMarkers) {
+        if (reason) {
+            char buf[64];
+            qsnprintf(buf, sizeof(buf), "%d", rust_markers);
+            *reason = std::string("Rust mangled name has ") + buf
+                   + " generic-instantiation markers (Hex-Rays mop_t recursion risk): "
+                   + fname.c_str();
+        }
+        return true;
     }
 
     return false;
