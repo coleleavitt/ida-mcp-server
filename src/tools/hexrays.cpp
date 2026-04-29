@@ -55,6 +55,42 @@ namespace ida_mcp::tools::hexrays {
             throw std::runtime_error("Address is not in a function");
         }
 
+        if (segment_t *seg = getseg(ea); seg != nullptr && seg->type == SEG_XTRN) {
+            qstring fname;
+            get_func_name(&fname, func->start_ea);
+            qstring seg_name;
+            get_segm_name(&seg_name, seg);
+            qstring stub;
+            stub.sprnt(
+                "// ============================================================\n"
+                "// EXTERNAL IMPORT\n"
+                "// ============================================================\n"
+                "// Address:  %s\n"
+                "// Name:     %s\n"
+                "// Segment:  %s (SEG_XTRN)\n"
+                "// Note:     This is an extern symbol resolved at link/load time.\n"
+                "//           No code body exists in this binary; calls to %s are\n"
+                "//           dispatched through GOT/IAT to the dynamic library.\n"
+                "// ============================================================\n"
+                "\n"
+                "extern void %s(/* see import library declaration */);\n",
+                format_ea(ea).c_str(),
+                fname.empty() ? "<anonymous>" : fname.c_str(),
+                seg_name.empty() ? "<unnamed>" : seg_name.c_str(),
+                fname.empty() ? "<anonymous>" : fname.c_str(),
+                fname.empty() ? "extern_func" : fname.c_str());
+            return json{
+                {"address",              format_ea(ea)},
+                {"function_name",        fname.c_str()},
+                {"pseudocode",           stub.c_str()},
+                {"signature",            "extern"},
+                {"decompilation_method", "extern_import"},
+                {"is_extern",            true},
+                {"segment",              seg_name.c_str()},
+                {"lvars_count",          0}
+            };
+        }
+
         if ((func->flags & FUNC_THUNK) != 0) {
             qstring fname;
             get_func_name(&fname, func->start_ea);
@@ -88,10 +124,10 @@ namespace ida_mcp::tools::hexrays {
                 qstring line;
                 generate_disasm_line(&line, addr, GENDSM_REMOVE_TAGS);
                 disasm.cat_sprnt("//   %s %s\n", format_ea(addr).c_str(), line.c_str());
+                ++instr_count;
                 ea_t next = next_head(addr, func->end_ea);
                 if (next == BADADDR || next <= addr) break;
                 addr = next;
-                ++instr_count;
             }
 
             qstring sig_str;
@@ -164,6 +200,16 @@ namespace ida_mcp::tools::hexrays {
 
         hexrays_failure_t hf;
         cfuncptr_t cfunc = decompile(func, &hf, DECOMP_NO_WAIT);
+
+        if (cfunc == nullptr && hf.code == MERR_FUNCSIZE) {
+            static bool maxfuncsize_bumped = false;
+            if (!maxfuncsize_bumped) {
+                change_hexrays_config("MAX_FUNCSIZE = 16384");
+                maxfuncsize_bumped = true;
+            }
+            hf = hexrays_failure_t{};
+            cfunc = decompile(func, &hf, DECOMP_NO_WAIT);
+        }
 
         if (cfunc == nullptr) {
             extlang_object_t python = find_extlang_by_name("Python");
