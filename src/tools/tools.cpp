@@ -79,5 +79,8 @@ namespace ida_mcp::tools {
 
         // Xtensa processor feature toggles (Code Density, Windowed, MAC16, ...)
         xtensa_options::register_tools(server);
+
+        // Itanium C++ ABI class / vtable recovery (RTTI parser)
+        cpp_class_recovery::register_tools(server);
     }
 } // namespace ida_mcp::tools

@@ -230,4 +230,8 @@ namespace xtensa_options {
     void register_tools(mcp::McpServer& server);
 }
 
+namespace cpp_class_recovery {
+    void register_tools(mcp::McpServer& server);
+}
+
 } // namespace ida_mcp::tools
