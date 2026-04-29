@@ -239,6 +239,23 @@ inline bool is_go_pathological_func(func_t* func, std::string* reason = nullptr)
         return true;
     }
 
+    constexpr asize_t kMaxSafeFuncSize = 16 * 1024;
+    asize_t fsz = func->size();
+    if (fsz > kMaxSafeFuncSize) {
+        if (reason) {
+            char buf[128];
+            qsnprintf(buf, sizeof(buf),
+                      "function size %llu bytes exceeds %llu KB safe-decompile threshold "
+                      "(stock MAX_FUNCSIZE was 64 KB; we patched it out, but Hex-Rays "
+                      "mop_t::for_all_ops infinite-loops on huge SIMD/vectorized functions - "
+                      "Crashpad CaptureContext, video codec SAD loops, etc.)",
+                      (unsigned long long)fsz,
+                      (unsigned long long)(kMaxSafeFuncSize / 1024));
+            *reason = buf;
+        }
+        return true;
+    }
+
     return false;
 }
 
