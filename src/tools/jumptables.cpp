@@ -4,9 +4,11 @@
 
 // 9.3-only jump table info APIs — C-linkage, discovered via Hex-Rays decompilation
 extern "C" {
-    ssize_t get_jumptable_info(ea_t out[2], ea_t ea);
-    void set_jumptable_info(ea_t ea, const ea_t info[2]);
-    void del_jumptable_info(ea_t ea);
+ssize_t get_jumptable_info(ea_t out[2], ea_t ea);
+
+void set_jumptable_info(ea_t ea, const ea_t info[2]);
+
+void del_jumptable_info(ea_t ea);
 }
 
 namespace ida_mcp::tools::jumptables {
@@ -194,102 +196,121 @@ namespace ida_mcp::tools::jumptables {
         }
     }
 
-    void register_tools(mcp::McpServer &server) {
-        {
+    void register_tools(mcp::McpServer &server) { {
             mcp::ToolDefinition def;
             def.name = "set_switch_info";
             def.description = "Create or modify a switch/jump table definition at an address. "
-                "Requires at minimum: address (the indirect jump), jump_table (table start), and ncases.";
+                    "Requires at minimum: address (the indirect jump), jump_table (table start), and ncases.";
             def.input_schema = json{
                 {"type", "object"},
-                {"properties", {
-                    {"address", {{"type", "string"}, {"description", "Hex address of the indirect jump instruction"}}},
-                    {"jump_table", {{"type", "string"}, {"description", "Hex address of the jump table start"}}},
-                    {"ncases", {{"type", "integer"}, {"description", "Number of cases (excluding default)"}}},
-                    {"default_jump", {{"type", "string"}, {"description", "Hex address of default case (optional)"}}},
-                    {"start_ea", {{"type", "string"}, {"description", "Start of switch idiom (optional)"}}},
-                    {"lowcase", {{"type", "integer"}, {"description", "Lowest case value (optional, default 0)"}}},
-                    {"element_base", {{"type", "string"}, {"description", "Element base address for relative tables (optional)"}}},
-                    {"jtable_element_size", {{"type", "integer"}, {"description", "Jump table element size: 1, 2, 4, or 8 (default 4)"}}},
-                    {"sparse", {{"type", "boolean"}, {"description", "Whether switch is sparse (has value table)"}}},
-                    {"signed", {{"type", "boolean"}, {"description", "Whether jump table entries are signed"}}},
-                    {"subtract", {{"type", "boolean"}, {"description", "Whether values are subtracted from elbase"}}}
-                }},
+                {
+                    "properties", {
+                        {
+                            "address",
+                            {{"type", "string"}, {"description", "Hex address of the indirect jump instruction"}}
+                        },
+                        {"jump_table", {{"type", "string"}, {"description", "Hex address of the jump table start"}}},
+                        {"ncases", {{"type", "integer"}, {"description", "Number of cases (excluding default)"}}},
+                        {
+                            "default_jump",
+                            {{"type", "string"}, {"description", "Hex address of default case (optional)"}}
+                        },
+                        {"start_ea", {{"type", "string"}, {"description", "Start of switch idiom (optional)"}}},
+                        {"lowcase", {{"type", "integer"}, {"description", "Lowest case value (optional, default 0)"}}},
+                        {
+                            "element_base",
+                            {{"type", "string"}, {"description", "Element base address for relative tables (optional)"}}
+                        },
+                        {
+                            "jtable_element_size",
+                            {{"type", "integer"}, {"description", "Jump table element size: 1, 2, 4, or 8 (default 4)"}}
+                        },
+                        {
+                            "sparse",
+                            {{"type", "boolean"}, {"description", "Whether switch is sparse (has value table)"}}
+                        },
+                        {"signed", {{"type", "boolean"}, {"description", "Whether jump table entries are signed"}}},
+                        {
+                            "subtract",
+                            {{"type", "boolean"}, {"description", "Whether values are subtracted from elbase"}}
+                        }
+                    }
+                },
                 {"required", json::array({"address", "jump_table", "ncases"})}
             };
             server.register_tool(def, set_switch_info_impl);
-        }
-
-        {
+        } {
             mcp::ToolDefinition def;
             def.name = "del_switch_info";
             def.description = "Delete a switch/jump table definition at an address";
             def.input_schema = json{
                 {"type", "object"},
-                {"properties", {
-                    {"address", {{"type", "string"}, {"description", "Hex address of the switch instruction"}}}
-                }},
+                {
+                    "properties", {
+                        {"address", {{"type", "string"}, {"description", "Hex address of the switch instruction"}}}
+                    }
+                },
                 {"required", json::array({"address"})}
             };
             server.register_tool(def, del_switch_info_impl);
-        }
-
-        {
+        } {
             mcp::ToolDefinition def;
             def.name = "create_switch_xrefs";
             def.description = "Create cross-references and data items for an existing switch table. "
-                "Call after set_switch_info to make IDA recognize the table structure.";
+                    "Call after set_switch_info to make IDA recognize the table structure.";
             def.input_schema = json{
                 {"type", "object"},
-                {"properties", {
-                    {"address", {{"type", "string"}, {"description", "Hex address of the switch instruction"}}}
-                }},
+                {
+                    "properties", {
+                        {"address", {{"type", "string"}, {"description", "Hex address of the switch instruction"}}}
+                    }
+                },
                 {"required", json::array({"address"})}
             };
             server.register_tool(def, create_switch_xrefs_impl);
-        }
-
-        {
+        } {
             mcp::ToolDefinition def;
             def.name = "get_jumptable_info";
             def.description = "Get jump table info (table address and size) stored at an address. "
-                "IDA 9.3+ only. Returns table_address and table_size if info exists.";
+                    "IDA 9.3+ only. Returns table_address and table_size if info exists.";
             def.input_schema = json{
                 {"type", "object"},
-                {"properties", {
-                    {"address", {{"type", "string"}, {"description", "Hex address to query"}}}
-                }},
+                {
+                    "properties", {
+                        {"address", {{"type", "string"}, {"description", "Hex address to query"}}}
+                    }
+                },
                 {"required", json::array({"address"})}
             };
             server.register_tool(def, get_jumptable_info_impl);
-        }
-
-        {
+        } {
             mcp::ToolDefinition def;
             def.name = "set_jumptable_info";
             def.description = "Store jump table info (table address and size) at an address. "
-                "IDA 9.3+ only.";
+                    "IDA 9.3+ only.";
             def.input_schema = json{
                 {"type", "object"},
-                {"properties", {
-                    {"address", {{"type", "string"}, {"description", "Hex address of the jump instruction"}}},
-                    {"table_address", {{"type", "string"}, {"description", "Hex address of the jump table"}}},
-                    {"table_size", {{"type", "integer"}, {"description", "Number of entries in the table"}}}
-                }},
+                {
+                    "properties", {
+                        {"address", {{"type", "string"}, {"description", "Hex address of the jump instruction"}}},
+                        {"table_address", {{"type", "string"}, {"description", "Hex address of the jump table"}}},
+                        {"table_size", {{"type", "integer"}, {"description", "Number of entries in the table"}}}
+                    }
+                },
                 {"required", json::array({"address", "table_address", "table_size"})}
             };
             server.register_tool(def, set_jumptable_info_impl);
-        }
-
-        {
+        } {
             mcp::ToolDefinition def;
             def.name = "del_jumptable_info";
             def.description = "Delete jump table info at an address. IDA 9.3+ only.";
             def.input_schema = json{
                 {"type", "object"},
-                {"properties", {
-                    {"address", {{"type", "string"}, {"description", "Hex address"}}}
-                }},
+                {
+                    "properties", {
+                        {"address", {{"type", "string"}, {"description", "Hex address"}}}
+                    }
+                },
                 {"required", json::array({"address"})}
             };
             server.register_tool(def, del_jumptable_info_impl);

@@ -145,7 +145,7 @@ namespace ida_mcp::tools::debugger {
             }
 
             return json{
-                {"breakpoint_count", qty},
+                {"breakpoint_count", breakpoints.size()},  // Use actual count, not get_bpt_qty()
                 {"breakpoints", breakpoints}
             };
         }
@@ -514,7 +514,7 @@ namespace ida_mcp::tools::debugger {
             def.description = "Check if debugger is active";
             def.input_schema = json{
                 {"type", "object"},
-                {"properties", {}},
+                {"properties", json::object()},
                 {"required", json::array()}
             };
             server.register_tool(def, is_debugger_active);
@@ -527,7 +527,7 @@ namespace ida_mcp::tools::debugger {
             def.description = "Get debugger status";
             def.input_schema = json{
                 {"type", "object"},
-                {"properties", {}},
+                {"properties", json::object()},
                 {"required", json::array()}
             };
             server.register_tool(def, get_debug_status);
@@ -540,7 +540,7 @@ namespace ida_mcp::tools::debugger {
             def.description = "List threads in process";
             def.input_schema = json{
                 {"type", "object"},
-                {"properties", {}},
+                {"properties", json::object()},
                 {"required", json::array()}
             };
             server.register_tool(def, list_threads);
@@ -575,7 +575,7 @@ namespace ida_mcp::tools::debugger {
             def.description = "List all breakpoints";
             def.input_schema = json{
                 {"type", "object"},
-                {"properties", {}},
+                {"properties", json::object()},
                 {"required", json::array()}
             };
             server.register_tool(def, list_breakpoints);
@@ -610,7 +610,7 @@ namespace ida_mcp::tools::debugger {
             def.description = "List loaded modules/DLLs";
             def.input_schema = json{
                 {"type", "object"},
-                {"properties", {}},
+                {"properties", json::object()},
                 {"required", json::array()}
             };
             server.register_tool(def, list_modules);
@@ -679,7 +679,7 @@ namespace ida_mcp::tools::debugger {
             def.description = "Continue process execution";
             def.input_schema = json{
                 {"type", "object"},
-                {"properties", {}},
+                {"properties", json::object()},
                 {"required", json::array()}
             };
             server.register_tool(def, continue_process_exec);
@@ -692,7 +692,7 @@ namespace ida_mcp::tools::debugger {
             def.description = "Suspend process execution";
             def.input_schema = json{
                 {"type", "object"},
-                {"properties", {}},
+                {"properties", json::object()},
                 {"required", json::array()}
             };
             server.register_tool(def, suspend_process_exec);
@@ -705,7 +705,7 @@ namespace ida_mcp::tools::debugger {
             def.description = "Step into instruction";
             def.input_schema = json{
                 {"type", "object"},
-                {"properties", {}},
+                {"properties", json::object()},
                 {"required", json::array()}
             };
             server.register_tool(def, step_into_exec);
@@ -718,7 +718,7 @@ namespace ida_mcp::tools::debugger {
             def.description = "Step over instruction";
             def.input_schema = json{
                 {"type", "object"},
-                {"properties", {}},
+                {"properties", json::object()},
                 {"required", json::array()}
             };
             server.register_tool(def, step_over_exec);
@@ -731,7 +731,7 @@ namespace ida_mcp::tools::debugger {
             def.description = "Execute until return";
             def.input_schema = json{
                 {"type", "object"},
-                {"properties", {}},
+                {"properties", json::object()},
                 {"required", json::array()}
             };
             server.register_tool(def, step_until_ret_exec);
@@ -766,7 +766,7 @@ namespace ida_mcp::tools::debugger {
             def.description = "Terminate debugged process";
             def.input_schema = json{
                 {"type", "object"},
-                {"properties", {}},
+                {"properties", json::object()},
                 {"required", json::array()}
             };
             server.register_tool(def, exit_debug_process);

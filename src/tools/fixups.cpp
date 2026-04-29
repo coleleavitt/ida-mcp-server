@@ -232,7 +232,7 @@ namespace ida_mcp::tools::fixups {
             def.description = "Count all fixups";
             def.input_schema = json{
                 {"type", "object"},
-                {"properties", {}}
+                {"properties", json::object()}
             };
             server.register_tool(def, handle_count_fixups);
         }

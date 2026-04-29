@@ -11,7 +11,7 @@ namespace ida_mcp::tools::segments {
         }
 
         // Helper: Check if segment name suggests Mach-O sections (starts with __)
-        bool likely_has_sections(const std::string& seg_name) {
+        bool likely_has_sections(const std::string &seg_name) {
             return seg_name.find("__") == 0 || seg_name == "__TEXT" ||
                    seg_name == "__DATA" || seg_name == "__DATA_CONST" ||
                    seg_name == "__LINKEDIT" || seg_name == "__OBJC";
@@ -30,9 +30,9 @@ namespace ida_mcp::tools::segments {
 
             // Common Mach-O section patterns to detect
             struct section_pattern {
-                const char* segment;
-                const char* section;
-                const char* description;
+                const char *segment;
+                const char *section;
+                const char *description;
             };
 
             const section_pattern objc_sections[] = {
@@ -64,9 +64,10 @@ namespace ida_mcp::tools::segments {
             };
 
             // Try to find matching sections by checking if subsegments exist
-            for (const auto* patterns : {objc_sections, swift_sections}) {
+            for (const auto *patterns: {objc_sections, swift_sections}) {
                 for (int i = 0; patterns[i].segment != nullptr; i++) {
-                    if (seg_name_str.find(patterns[i].segment) != std::string::npos) {
+                    // Check if segment name matches this pattern's segment
+                    if (seg_name_str == patterns[i].segment) {
                         // Try to find this section name as a segment
                         qstring section_fullname;
                         section_fullname = patterns[i].segment;
@@ -132,7 +133,7 @@ namespace ida_mcp::tools::segments {
             }
 
             segs.push_back(seg_info);
-            seg = get_next_seg(end);
+            seg = get_next_seg(seg->start_ea);  // Must use start_ea, not end_ea!
         }
 
         json result = json{

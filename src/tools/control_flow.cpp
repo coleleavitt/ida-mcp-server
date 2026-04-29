@@ -176,6 +176,8 @@ namespace ida_mcp::tools::control_flow {
 
             int from_block = params["from_block"].get<int>();
             int to_block = params["to_block"].get<int>();
+            size_t max_paths = params.value("max_paths", 100);  // Limit paths to prevent exponential blowup
+            if (max_paths > 10000) max_paths = 10000;  // Hard cap
 
             func_t *pfn = get_func(ea);
             if (pfn == nullptr) {
@@ -195,6 +197,7 @@ namespace ida_mcp::tools::control_flow {
             std::vector<bool> visited(qfc.size(), false);
 
             std::function<void(int)> dfs = [&](int node) {
+                if (paths.size() >= max_paths) return;  // Stop if limit reached
                 current_path.push_back(node);
                 visited[node] = true;
 
@@ -214,7 +217,7 @@ namespace ida_mcp::tools::control_flow {
                     // Continue search
                     for (int i = 0; i < qfc.nsucc(node); i++) {
                         int succ = qfc.succ(node, i);
-                        if (!visited[succ]) {
+                        if (!visited[succ] && paths.size() < max_paths) {
                             dfs(succ);
                         }
                     }

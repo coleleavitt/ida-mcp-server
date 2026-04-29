@@ -43,7 +43,9 @@ namespace ida_mcp::tools::exec_scripts {
             }
         }
 
-        // Evaluate expression using current language (Python/IDC)
+        // Evaluate expression using IDC interpreter
+        // Note: Despite the generic name, this uses eval_idc_expr which only supports IDC.
+        // For Python support, use IDAPython's run_python_statement() via a separate tool.
         json handle_eval_expr(const json &params) {
             std::string expression = params["expression"].get<std::string>();
             ea_t ea = BADADDR;
@@ -58,7 +60,7 @@ namespace ida_mcp::tools::exec_scripts {
                 }
             }
 
-            // Evaluate the expression
+            // Evaluate the expression using IDC interpreter
             idc_value_t result;
             qstring err_msg;
 
@@ -68,43 +70,8 @@ namespace ida_mcp::tools::exec_scripts {
                 return json{
                     {"success", false},
                     {"error", err_msg.c_str()},
-                    {"expression", expression}
-                };
-            }
-
-            return json{
-                {"success", true},
-                {"expression", expression},
-                {"result", idc_value_to_json(result)}
-            };
-        }
-
-        // Evaluate IDC expression (forces IDC)
-        json handle_eval_idc(const json &params) {
-            std::string expression = params["expression"].get<std::string>();
-            ea_t ea = BADADDR;
-
-            if (params.contains("address") && !params["address"].is_null()) {
-                std::string addr_str = params["address"].get<std::string>();
-                if (addr_str != "0") {
-                    auto addr_opt = parse_ea(addr_str);
-                    if (addr_opt.has_value()) {
-                        ea = addr_opt.value();
-                    }
-                }
-            }
-
-            // Evaluate as IDC expression
-            idc_value_t result;
-            qstring err_msg;
-
-            bool success = eval_idc_expr(&result, ea, expression.c_str(), &err_msg);
-
-            if (!success) {
-                return json{
-                    {"success", false},
-                    {"error", err_msg.c_str()},
-                    {"expression", expression}
+                    {"expression", expression},
+                    {"language", "idc"}
                 };
             }
 
@@ -114,6 +81,12 @@ namespace ida_mcp::tools::exec_scripts {
                 {"result", idc_value_to_json(result)},
                 {"language", "idc"}
             };
+        }
+
+        // Alias for handle_eval_expr - kept for API compatibility
+        // Both tools use the same IDC interpreter underneath
+        json handle_eval_idc(const json &params) {
+            return handle_eval_expr(params);
         }
 
         // Execute IDC code snippet
@@ -206,6 +179,62 @@ namespace ida_mcp::tools::exec_scripts {
                 {"result", idc_value_to_json(result)}
             };
         }
+        json handle_run_python(const json &params) {
+            std::string code = params["code"].get<std::string>();
+
+            extlang_object_t python = find_extlang_by_name("Python");
+            if (python == nullptr)
+                throw std::runtime_error("Python extlang not available (IDAPython not loaded)");
+
+            qstring errbuf;
+
+            bool ok = python->eval_snippet(code.c_str(), &errbuf);
+
+            if (!ok) {
+                return json{
+                    {"success", false},
+                    {"error", errbuf.c_str()},
+                    {"code", code},
+                    {"language", "python"}
+                };
+            }
+
+            return json{
+                {"success", true},
+                {"code", code},
+                {"language", "python"}
+            };
+        }
+
+        json handle_run_python_expr(const json &params) {
+            std::string expression = params["expression"].get<std::string>();
+
+            extlang_object_t python = find_extlang_by_name("Python");
+            if (python == nullptr)
+                throw std::runtime_error("Python extlang not available (IDAPython not loaded)");
+
+            idc_value_t result;
+            qstring errbuf;
+
+            bool ok = python->eval_expr(&result, BADADDR, expression.c_str(), &errbuf);
+
+            if (!ok) {
+                return json{
+                    {"success", false},
+                    {"error", errbuf.c_str()},
+                    {"expression", expression},
+                    {"language", "python"}
+                };
+            }
+
+            return json{
+                {"success", true},
+                {"expression", expression},
+                {"result", idc_value_to_json(result)},
+                {"language", "python"}
+            };
+        }
+
     } // anonymous namespace
 
     void register_tools(mcp::McpServer &server) {
@@ -316,6 +345,40 @@ namespace ida_mcp::tools::exec_scripts {
                 {"required", json::array({"code"})}
             };
             server.register_tool(def, handle_compile_idc);
+        }
+
+        // run_python
+        {
+            mcp::ToolDefinition def;
+            def.name = "run_python";
+            def.description =
+                "Execute Python code via IDAPython. Has full access to ida_*, idautils, idc, "
+                "ida_hexrays, ida_nalt, etc. Use print() to return output.";
+            def.input_schema = json{
+                {"type", "object"},
+                {"properties", {
+                    {"code", {{"type", "string"}, {"description", "Python code to execute"}}}
+                }},
+                {"required", json::array({"code"})}
+            };
+            server.register_tool(def, handle_run_python);
+        }
+
+        // run_python_expr
+        {
+            mcp::ToolDefinition def;
+            def.name = "run_python_expr";
+            def.description =
+                "Evaluate a Python expression and return the result. "
+                "For statements/multi-line code, use run_python instead.";
+            def.input_schema = json{
+                {"type", "object"},
+                {"properties", {
+                    {"expression", {{"type", "string"}, {"description", "Python expression"}}}
+                }},
+                {"required", json::array({"expression"})}
+            };
+            server.register_tool(def, handle_run_python_expr);
         }
 
         // call_idc_func

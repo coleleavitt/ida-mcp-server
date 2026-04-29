@@ -61,5 +61,26 @@ namespace ida_mcp::tools {
 
         wide_values::register_tools(server);
         metadata_backup::register_tools(server);
+
+        decompile_all::register_tools(server);
+        microcode::register_tools(server);
+        dirtree_tools::register_tools(server);
+
+        import_entry::register_tools(server);
+
+        signatures::register_tools(server);
+        find_items::register_tools(server);
+        data_creation::register_tools(server);
+        xref_manipulation::register_tools(server);
+        segment_manipulation::register_tools(server);
+        source_info::register_tools(server);
+        objc_analysis::register_tools(server);
+        objc_deep::register_tools(server);
+
+        // Xtensa processor feature toggles (Code Density, Windowed, MAC16, ...)
+        xtensa_options::register_tools(server);
+
+        // Itanium C++ ABI class / vtable recovery (RTTI parser)
+        cpp_class_recovery::register_tools(server);
     }
 } // namespace ida_mcp::tools

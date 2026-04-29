@@ -11,8 +11,11 @@ namespace ida_mcp::mcp {
             req.jsonrpc = "2.0";
 
             if (j.contains("id")) {
-                if (j["id"].is_number_integer()) {
-                    req.id = j["id"].get<int64_t>();
+                // JSON-RPC 2.0 allows id to be String, Number, or Null
+                if (j["id"].is_number_integer() || j["id"].is_string()) {
+                    req.id = j["id"];
+                } else if (j["id"].is_null()) {
+                    req.id = nullptr;
                 }
             }
 

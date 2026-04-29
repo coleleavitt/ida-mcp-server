@@ -2,6 +2,7 @@
 #include <typeinf.hpp>
 #include <funcs.hpp>
 #include <ida.hpp>
+#include <ida93_new_apis.hpp>
 
 namespace ida_mcp::tools::types {
     namespace {
@@ -194,7 +195,7 @@ namespace ida_mcp::tools::types {
 
             // Iterate through all ordinals
             uint32 ord_limit = get_ordinal_limit(ti);
-            for (uint32 ord = 1; ord < ord_limit && enums.size() < (size_t)limit; ord++) {
+            for (uint32 ord = 1; ord < ord_limit && enums.size() < (size_t) limit; ord++) {
                 tinfo_t tif;
                 if (tif.get_numbered_type(ti, ord)) {
                     if (tif.is_enum()) {
@@ -221,7 +222,7 @@ namespace ida_mcp::tools::types {
             return json{
                 {"enum_count", enums.size()},
                 {"enums", enums},
-                {"truncated", enums.size() >= (size_t)limit}
+                {"truncated", enums.size() >= (size_t) limit}
             };
         }
 
@@ -287,7 +288,7 @@ namespace ida_mcp::tools::types {
             json structs = json::array();
 
             uint32 ord_limit = get_ordinal_limit(ti);
-            for (uint32 ord = 1; ord < ord_limit && structs.size() < (size_t)limit; ord++) {
+            for (uint32 ord = 1; ord < ord_limit && structs.size() < (size_t) limit; ord++) {
                 tinfo_t tif;
                 if (tif.get_numbered_type(ti, ord)) {
                     if (tif.is_udt()) {
@@ -313,7 +314,7 @@ namespace ida_mcp::tools::types {
             return json{
                 {"struct_count", structs.size()},
                 {"structs", structs},
-                {"truncated", structs.size() >= (size_t)limit}
+                {"truncated", structs.size() >= (size_t) limit}
             };
         }
 
@@ -433,7 +434,185 @@ namespace ida_mcp::tools::types {
                 {"base", atd.base}
             };
         }
+
+        // Describe a type library ordinal (IDA 9.3+)
+        // Signature from decompiled libida.so @ 0x55f7b0:
+        //   describe_tlc_ordinal(qstring *out, til_t *ti, uint32 ordinal,
+        //                        ???, ???, ???, char flags)
+        // We only need the first 3 params — the rest default to 0/nullptr.
+        struct tlc_desc_result_t {
+            qstring desc;
+            char pad[82];
+        };
+
+        extern "C" int64 describe_tlc_ordinal(
+            tlc_desc_result_t *out,
+            til_t *ti,
+            uint32 ordinal,
+            int64 a4,
+            int64 a5,
+            int64 a6,
+            char a7);
+
+        json handle_describe_tlc_ordinal(const json &params) {
+            if (!params.contains("ordinal")) {
+                return json{{"error", "Missing required parameter: ordinal"}};
+            }
+
+            uint32 ordinal = params["ordinal"].get<uint32>();
+            til_t *ti = get_idati();
+            if (ti == nullptr) {
+                return json{{"error", "No type library available"}};
+            }
+
+            uint32 ord_limit = get_ordinal_limit(ti);
+            if (ordinal == 0 || ordinal >= ord_limit) {
+                return json{
+                    {"error", "Ordinal out of range"},
+                    {"ordinal", ordinal},
+                    {"ordinal_limit", ord_limit}
+                };
+            }
+
+            tlc_desc_result_t result{};
+            memset(result.pad, 0, sizeof(result.pad));
+            describe_tlc_ordinal(&result, ti, ordinal, 0, 0, 0, 0);
+
+            tinfo_t tif;
+            json type_kind = nullptr;
+            if (tif.get_numbered_type(ti, ordinal)) {
+                if (tif.is_struct()) type_kind = "struct";
+                else if (tif.is_union()) type_kind = "union";
+                else if (tif.is_enum()) type_kind = "enum";
+                else if (tif.is_func()) type_kind = "function";
+                else if (tif.is_ptr()) type_kind = "pointer";
+                else if (tif.is_array()) type_kind = "array";
+                else if (tif.is_typedef()) type_kind = "typedef";
+                else type_kind = "other";
+            }
+
+            return json{
+                {"ordinal", ordinal},
+                {"description", result.desc.empty() ? "" : result.desc.c_str()},
+                {"type_kind", type_kind},
+                {"ordinal_limit", ord_limit}
+            };
+        }
+
+        json handle_describe_tlc_ordinals_range(const json &params) {
+            til_t *ti = get_idati();
+            if (ti == nullptr) {
+                return json{{"error", "No type library available"}};
+            }
+
+            uint32 ord_limit = get_ordinal_limit(ti);
+            uint32 start = params.value("start", static_cast<uint32>(1));
+            uint32 count = params.value("count", static_cast<uint32>(100));
+            if (start == 0) start = 1;
+            if (count > 10000) count = 10000;
+
+            json entries = json::array();
+            for (uint32 ord = start; ord < ord_limit && entries.size() < count; ord++) {
+                tlc_desc_result_t result{};
+                memset(result.pad, 0, sizeof(result.pad));
+                describe_tlc_ordinal(&result, ti, ord, 0, 0, 0, 0);
+
+                if (result.desc.empty()) continue;
+
+                tinfo_t tif;
+                json type_kind = nullptr;
+                if (tif.get_numbered_type(ti, ord)) {
+                    if (tif.is_struct()) type_kind = "struct";
+                    else if (tif.is_union()) type_kind = "union";
+                    else if (tif.is_enum()) type_kind = "enum";
+                    else if (tif.is_func()) type_kind = "function";
+                    else if (tif.is_ptr()) type_kind = "pointer";
+                    else if (tif.is_array()) type_kind = "array";
+                    else if (tif.is_typedef()) type_kind = "typedef";
+                    else type_kind = "other";
+                }
+
+                entries.push_back(json{
+                    {"ordinal", ord},
+                    {"description", result.desc.c_str()},
+                    {"type_kind", type_kind}
+                });
+            }
+
+            return json{
+                {"ordinal_limit", ord_limit},
+                {"start", start},
+                {"returned", entries.size()},
+                {"entries", entries}
+            };
+        }
     } // anonymous namespace
+
+        json handle_build_anon_type_name(const json &params) {
+            auto ea_opt = parse_ea(params["address"]);
+            if (!ea_opt) throw std::runtime_error("Invalid address");
+
+            tinfo_t tif;
+            if (!get_tinfo(&tif, ea_opt.value()))
+                throw std::runtime_error("No type at " + format_ea(ea_opt.value()));
+
+            qstring name;
+            bool ok = tinfo_t__build_anon_type_name(&name, &tif);
+
+            qstring type_str;
+            tif.print(&type_str);
+
+            return json{
+                {"address", format_ea(ea_opt.value())},
+                {"anon_name", ok && !name.empty() ? json(name.c_str()) : json(nullptr)},
+                {"type", type_str.c_str()},
+                {"success", ok}
+            };
+        }
+
+        json handle_deduplicate_members(const json &params) {
+            std::string name = params["name"].get<std::string>();
+
+            til_t *ti = get_idati();
+            tinfo_t tif;
+            if (!tif.get_named_type(ti, name.c_str()))
+                throw std::runtime_error("Type not found: " + name);
+
+            if (!tif.is_struct() && !tif.is_union())
+                throw std::runtime_error("Not a struct/union: " + name);
+
+            udt_type_data_t udt;
+            if (!tif.get_udt_details(&udt))
+                throw std::runtime_error("Failed to get UDT details for: " + name);
+
+            size_t before = udt.size();
+            int removed = udt_type_data_t__deduplicate_members(&udt);
+
+            return json{
+                {"name", name},
+                {"members_before", before},
+                {"members_after", udt.size()},
+                {"removed", removed}
+            };
+        }
+
+        json handle_generate_deref(const json &params) {
+            auto ea_opt = parse_ea(params["address"]);
+            if (!ea_opt) throw std::runtime_error("Invalid address");
+
+            bool detailed = params.value("detailed", false);
+            qstring chain;
+            generate_deref_chain(&chain, ea_opt.value(), nullptr, detailed);
+
+            int color = get_deref_color();
+
+            return json{
+                {"address", format_ea(ea_opt.value())},
+                {"deref_chain", chain.empty() ? json(nullptr) : json(chain.c_str())},
+                {"color_index", color},
+                {"has_chain", !chain.empty()}
+            };
+        }
 
     void register_tools(mcp::McpServer &server) {
         // get_type_info
@@ -654,6 +833,49 @@ namespace ida_mcp::tools::types {
                 {"required", json::array({"name"})}
             };
             server.register_tool(def, handle_get_array_info);
+        }
+
+        {
+            mcp::ToolDefinition def;
+            def.name = "build_anon_type_name";
+            def.description = "Generate a name for an anonymous struct/union/enum type at address";
+            def.input_schema = json{
+                {"type", "object"},
+                {"properties", {
+                    {"address", {{"type", "string"}, {"description", "Hex address with anonymous type"}}}
+                }},
+                {"required", json::array({"address"})}
+            };
+            server.register_tool(def, handle_build_anon_type_name);
+        }
+
+        {
+            mcp::ToolDefinition def;
+            def.name = "deduplicate_struct_members";
+            def.description = "Remove duplicate members from a struct/union type definition";
+            def.input_schema = json{
+                {"type", "object"},
+                {"properties", {
+                    {"name", {{"type", "string"}, {"description", "Struct/union type name"}}}
+                }},
+                {"required", json::array({"name"})}
+            };
+            server.register_tool(def, handle_deduplicate_members);
+        }
+
+        {
+            mcp::ToolDefinition def;
+            def.name = "get_deref_chain";
+            def.description = "Generate pointer dereference chain at address (useful for vtables, linked lists, nested struct access)";
+            def.input_schema = json{
+                {"type", "object"},
+                {"properties", {
+                    {"address", {{"type", "string"}, {"description", "Hex address to dereference"}}},
+                    {"detailed", {{"type", "boolean"}, {"description", "Show detailed chain info (default false)"}}}
+                }},
+                {"required", json::array({"address"})}
+            };
+            server.register_tool(def, handle_generate_deref);
         }
     }
 } // namespace ida_mcp::tools::types

@@ -1,9 +1,9 @@
 #include "tools/tools.hpp"
-#include <regex>
 #include <bytes.hpp>
 #include <segment.hpp>
 #include <lines.hpp>
 #include <ida.hpp>
+#include <regex.h>
 
 namespace ida_mcp::tools::search {
     namespace {
@@ -13,92 +13,42 @@ namespace ida_mcp::tools::search {
         }
 
         // Helper: Search for Objective-C selectors in __objc_methname section
-        json search_objc_selectors(const std::string& pattern, int limit) {
+        json search_objc_section(const std::string &pattern, const char *section_name,
+                                const char *alt_name, const char *result_key,
+                                const char *result_type, int limit) {
             json results = json::array();
 
-            // Try to find __objc_methname section (Objective-C method names)
-            segment_t *seg = get_segm_by_name("__TEXT,__objc_methname");
-            if (seg == nullptr) {
-                seg = get_segm_by_name("__objc_methname");
-            }
+            segment_t *seg = get_segm_by_name(section_name);
+            if (seg == nullptr && alt_name != nullptr)
+                seg = get_segm_by_name(alt_name);
+            if (seg == nullptr)
+                return results;
 
-            if (seg == nullptr) {
-                return results;  // No Objective-C method names section
-            }
+            struct regex_t re;
+            if (qregcomp(&re, pattern.c_str(), REG_ICASE | REG_NOSUB) != 0)
+                return results;
 
-            std::regex re(pattern, std::regex::icase);
             ea_t ea = seg->start_ea;
-
             while (ea < seg->end_ea && results.size() < (size_t)limit) {
-                // Read string at this address
                 qstring str;
                 size_t len = get_max_strlit_length(ea, STRTYPE_C, ALOPT_IGNHEADS);
                 if (len > 0 && len < 1024) {
                     if (get_strlit_contents(&str, ea, len, STRTYPE_C)) {
-                        std::string selector = str.c_str();
-
-                        // Check if matches pattern
-                        if (std::regex_search(selector, re)) {
+                        if (qregexec(&re, str.c_str(), 0, nullptr, 0) == 0) {
                             results.push_back(json{
                                 {"address", format_ea(ea)},
-                                {"selector", selector},
-                                {"type", "objc_selector"}
+                                {result_key, str.c_str()},
+                                {"type", result_type}
                             });
                         }
-
-                        ea += len + 1;  // Move past this string
+                        ea += len + 1;
                         continue;
                     }
                 }
-
                 ea = next_head(ea, seg->end_ea);
             }
 
-            return results;
-        }
-
-        // Helper: Search for Objective-C class names in __objc_classname section
-        json search_objc_classnames(const std::string& pattern, int limit) {
-            json results = json::array();
-
-            // Try to find __objc_classname section
-            segment_t *seg = get_segm_by_name("__TEXT,__objc_classname");
-            if (seg == nullptr) {
-                seg = get_segm_by_name("__objc_classname");
-            }
-
-            if (seg == nullptr) {
-                return results;  // No Objective-C class names section
-            }
-
-            std::regex re(pattern, std::regex::icase);
-            ea_t ea = seg->start_ea;
-
-            while (ea < seg->end_ea && results.size() < (size_t)limit) {
-                // Read string at this address
-                qstring str;
-                size_t len = get_max_strlit_length(ea, STRTYPE_C, ALOPT_IGNHEADS);
-                if (len > 0 && len < 1024) {
-                    if (get_strlit_contents(&str, ea, len, STRTYPE_C)) {
-                        std::string classname = str.c_str();
-
-                        // Check if matches pattern
-                        if (std::regex_search(classname, re)) {
-                            results.push_back(json{
-                                {"address", format_ea(ea)},
-                                {"classname", classname},
-                                {"type", "objc_class"}
-                            });
-                        }
-
-                        ea += len + 1;  // Move past this string
-                        continue;
-                    }
-                }
-
-                ea = next_head(ea, seg->end_ea);
-            }
-
+            qregfree(&re);
             return results;
         }
     } // anonymous namespace
@@ -135,71 +85,39 @@ namespace ida_mcp::tools::search {
         json results = json::array();
 
         // Check if pattern is a simple string (no regex metacharacters)
-        bool is_simple = pattern.find_first_of("*+?[](){}|^$\\.") == std::string::npos;
+        int sflag = SEARCH_DOWN | SEARCH_NOSHOW;
+        if (!case_insensitive)
+            sflag |= SEARCH_CASE;
 
-        if (is_simple && !case_insensitive) {
-            ea_t ea = start_ea;
+        bool has_regex_chars = pattern.find_first_of("*+?[](){}|^$\\.") != std::string::npos;
+        if (has_regex_chars || case_insensitive)
+            sflag |= SEARCH_REGEX;
 
-            while (results.size() < (size_t) limit) {
-                ea = find_text(ea, 0, 0, pattern.c_str(), SEARCH_DOWN);
+        ea_t ea = start_ea;
+        while (results.size() < (size_t) limit) {
+            ea = find_text(ea, 0, 0, pattern.c_str(), sflag);
 
-                if (ea == BADADDR || ea >= end_ea) {
-                    break;
-                }
+            if (ea == BADADDR || ea >= end_ea)
+                break;
 
-                qstring disasm;
-                generate_disasm_line(&disasm, ea, GENDSM_FORCE_CODE);
-                qstring clean_disasm;
-                tag_remove(&clean_disasm, disasm);
+            qstring disasm, clean_disasm;
+            generate_disasm_line(&disasm, ea, GENDSM_FORCE_CODE);
+            tag_remove(&clean_disasm, disasm);
 
-                func_t *func = get_func(ea);
-                std::string func_name;
-                if (func != nullptr) {
-                    func_name = get_function_name(func);
-                }
+            func_t *func = get_func(ea);
+            std::string func_name;
+            if (func != nullptr)
+                func_name = get_function_name(func);
 
-                results.push_back(json{
-                    {"address", format_ea(ea)},
-                    {"disassembly", clean_disasm.c_str()},
-                    {"function", func_name.empty() ? nullptr : json(func_name)}
-                });
+            results.push_back(json{
+                {"address", format_ea(ea)},
+                {"disassembly", clean_disasm.c_str()},
+                {"function", func_name.empty() ? nullptr : json(func_name)}
+            });
 
-                ea = next_head(ea, end_ea);
-                if (ea == BADADDR) {
-                    break;
-                }
-            }
-        } else {
-            std::regex re(pattern, case_insensitive ? std::regex::icase : std::regex::ECMAScript);
-
-            for (ea_t ea = start_ea; ea < end_ea && results.size() < (size_t) limit;) {
-                if (is_code(get_flags(ea))) {
-                    qstring disasm;
-                    generate_disasm_line(&disasm, ea, GENDSM_FORCE_CODE);
-                    qstring clean_disasm;
-                    tag_remove(&clean_disasm, disasm);
-                    std::string disasm_str = clean_disasm.c_str();
-
-                    if (std::regex_search(disasm_str, re)) {
-                        func_t *func = get_func(ea);
-                        std::string func_name;
-                        if (func != nullptr) {
-                            func_name = get_function_name(func);
-                        }
-
-                        results.push_back(json{
-                            {"address", format_ea(ea)},
-                            {"disassembly", disasm_str},
-                            {"function", func_name.empty() ? nullptr : json(func_name)}
-                        });
-                    }
-                }
-
-                ea = next_head(ea, end_ea);
-                if (ea == BADADDR) {
-                    break;
-                }
-            }
+            ea = next_head(ea, end_ea);
+            if (ea == BADADDR)
+                break;
         }
 
         json response = json{
@@ -211,7 +129,7 @@ namespace ida_mcp::tools::search {
         };
 
         // For Mach-O binaries, also search Objective-C sections if pattern looks like a selector
-        if (is_macho_binary() && results.size() < (size_t)limit) {
+        if (is_macho_binary() && results.size() < (size_t) limit) {
             // Check if pattern might be an Objective-C selector (contains : or starts with common prefixes)
             bool looks_like_selector = pattern.find(':') != std::string::npos ||
                                        pattern.find("init") != std::string::npos ||
@@ -221,15 +139,18 @@ namespace ida_mcp::tools::search {
                                        pattern.find("get") != std::string::npos;
 
             if (looks_like_selector) {
-                json objc_selectors = search_objc_selectors(pattern, limit - results.size());
+                json objc_selectors = search_objc_section(
+                    pattern, "__TEXT,__objc_methname", "__objc_methname",
+                    "selector", "objc_selector", limit - results.size());
                 if (!objc_selectors.empty()) {
                     response["objc_selectors"] = objc_selectors;
                     response["objc_selector_count"] = objc_selectors.size();
                 }
             }
 
-            // Also search for class names
-            json objc_classes = search_objc_classnames(pattern, limit - results.size());
+            json objc_classes = search_objc_section(
+                pattern, "__TEXT,__objc_classname", "__objc_classname",
+                "classname", "objc_class", limit - results.size());
             if (!objc_classes.empty()) {
                 response["objc_classes"] = objc_classes;
                 response["objc_class_count"] = objc_classes.size();
@@ -292,7 +213,7 @@ namespace ida_mcp::tools::search {
         while (results.size() < (size_t) limit && ea < end_ea) {
             // Use bin_search to find pattern
             ea = ::bin_search(ea, end_ea, pattern_bytes.data(), nullptr,
-                             pattern_bytes.size(), BIN_SEARCH_FORWARD);
+                              pattern_bytes.size(), BIN_SEARCH_FORWARD);
 
             if (ea == BADADDR) {
                 break;
