@@ -99,8 +99,26 @@ namespace ida_mcp::mcp {
     }
 
     json McpServer::handle_initialize(const json &params) {
+        // Protocol-version negotiation (MCP 2025-11-25): echo the client's requested
+        // version if we support it, otherwise fall back to our latest supported version.
+        static constexpr const char *SERVER_LATEST_VERSION = "2025-11-25";
+        static constexpr const char *KNOWN_VERSIONS[] = {
+            "2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"
+        };
+
+        std::string negotiated = SERVER_LATEST_VERSION;
+        if (params.contains("protocolVersion") && params["protocolVersion"].is_string()) {
+            std::string requested = params["protocolVersion"].get<std::string>();
+            for (const char *known : KNOWN_VERSIONS) {
+                if (requested == known) {
+                    negotiated = requested;
+                    break;
+                }
+            }
+        }
+
         return json{
-            {"protocolVersion", "2025-11-25"},
+            {"protocolVersion", negotiated},
             {"capabilities", capabilities_},
             {
                 "serverInfo", {

@@ -27,9 +27,12 @@ namespace ida_mcp::tools::names {
                 {"is_weak", is_weak}
             };
 
-            if (is_get_nlist_demangled_name_supported()) {
+            // get_nlist_idx() returns the CLOSEST match and may return idx >= size,
+            // so BADADDR is not its "not found" sentinel. Gate on is_in_nlist() and a
+            // bounds check to avoid an out-of-range read in get_nlist_demangled_name().
+            if (is_get_nlist_demangled_name_supported() && is_in_nlist(ea)) {
                 size_t idx = get_nlist_idx(ea);
-                if (idx != BADADDR) {
+                if (idx < get_nlist_size()) {
                     const char *demangled = get_nlist_demangled_name(idx);
                     if (demangled != nullptr)
                         result["demangled"] = demangled;

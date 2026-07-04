@@ -61,6 +61,7 @@ namespace ida_mcp::tools::search {
 
         std::string pattern = params["pattern"];
         int limit = params.value("limit", 100);
+        if (limit < 0) limit = 100;  // A negative limit would cast to a huge size_t bound.
         bool case_insensitive = params.value("case_insensitive", false);
 
         ea_t start_ea = inf_get_min_ea();
@@ -163,6 +164,7 @@ namespace ida_mcp::tools::search {
     static json search_bytes_impl(const json &params) {
         std::string pattern_str = params["pattern"].get<std::string>();
         int limit = params.value("limit", 100);
+        if (limit < 0) limit = 100;  // A negative limit would cast to a huge size_t bound.
 
         // Remove spaces from pattern
         std::string hex_pattern;

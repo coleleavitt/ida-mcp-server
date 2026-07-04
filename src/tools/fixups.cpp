@@ -89,7 +89,11 @@ namespace ida_mcp::tools::fixups {
             ea_t start_ea = start_opt.value();
             uint64_t size = params["size"].get<uint64_t>();
 
+            // Guard against address-space wrap-around from an oversized `size`,
+            // which would otherwise make the range scan terminate immediately.
             ea_t end_ea = start_ea + size;
+            if (end_ea < start_ea)
+                end_ea = BADADDR;
 
             json fixups = json::array();
 

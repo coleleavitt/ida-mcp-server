@@ -136,43 +136,86 @@ namespace ida_mcp::http {
             return res;
         };
 
-        auto make_empty_response = [&req](beast::http::status status) {
+        auto make_empty_response = [&req](beast::http::status status,
+                                          const char *allow = nullptr) {
             beast::http::response<beast::http::string_body> res{status, req.version()};
             res.set(beast::http::field::server, "IDA-MCP-Server/1.0");
             res.set(MCP_PROTOCOL_VERSION_HEADER, MCP_PROTOCOL_VERSION);
+            if (allow != nullptr)
+                res.set(beast::http::field::allow, allow);
             res.keep_alive(false);
             res.prepare_payload();
             return res;
         };
 
-        // StreamableHTTP: GET requests are used for SSE streams — return 405 to signal
-        // that this server does not offer a standalone SSE stream (clients handle this gracefully)
-        if (req.method() == beast::http::verb::get) {
-            return make_empty_response(beast::http::status::method_not_allowed);
-        }
+        // Build a spec-compliant JSON-RPC 2.0 error envelope response.
+        auto make_jsonrpc_error = [&make_response](beast::http::status status,
+                                                   const json &id, int code,
+                                                   const std::string &message) {
+            json body = {
+                {"jsonrpc", "2.0"},
+                {"id", id},
+                {"error", {{"code", code}, {"message", message}}}
+            };
+            return make_response(status, body.dump());
+        };
 
-        // StreamableHTTP: DELETE requests are used for session termination
-        if (req.method() == beast::http::verb::delete_) {
-            return make_empty_response(beast::http::status::method_not_allowed);
+        // Only known MCP protocol versions are accepted in the request header.
+        auto is_known_protocol_version = [](const std::string &v) {
+            return v == "2024-11-05" || v == "2025-03-26" ||
+                   v == "2025-06-18" || v == "2025-11-25";
+        };
+
+        // StreamableHTTP: GET (SSE stream) and DELETE (session termination) are not
+        // offered by this stateless server. Advertise the supported method on 405.
+        if (req.method() == beast::http::verb::get ||
+            req.method() == beast::http::verb::delete_) {
+            return make_empty_response(beast::http::status::method_not_allowed, "POST");
         }
 
         if (req.method() != beast::http::verb::post) {
-            return make_response(beast::http::status::method_not_allowed,
-                                 R"({"error":"Only POST requests are supported"})");
+            return make_jsonrpc_error(beast::http::status::method_not_allowed, nullptr,
+                                      mcp::error_codes::INVALID_REQUEST,
+                                      "Only POST requests are supported");
         }
 
         if (req.target() != "/mcp" && req.target() != "/") {
-            return make_response(beast::http::status::not_found,
-                                 R"({"error":"Not found"})");
+            return make_jsonrpc_error(beast::http::status::not_found, nullptr,
+                                      mcp::error_codes::INVALID_REQUEST, "Not found");
+        }
+
+        // Validate the MCP-Protocol-Version request header when present (per 2025-06-18
+        // spec). An absent header is allowed for backwards compatibility.
+        {
+            auto it = req.find(MCP_PROTOCOL_VERSION_HEADER);
+            if (it != req.end()) {
+                std::string ver{it->value()};
+                if (!is_known_protocol_version(ver)) {
+                    return make_jsonrpc_error(beast::http::status::bad_request, nullptr,
+                                              mcp::error_codes::INVALID_REQUEST,
+                                              "Unsupported MCP-Protocol-Version: " + ver);
+                }
+            }
         }
 
         try {
             json request_json = json::parse(req.body());
+
+            // Best-effort id extraction so error responses can be correlated.
+            json err_id = nullptr;
+            if (request_json.is_object()) {
+                auto id_it = request_json.find("id");
+                if (id_it != request_json.end() &&
+                    (id_it->is_number() || id_it->is_string()))
+                    err_id = *id_it;
+            }
+
             auto mcp_request = mcp::McpRequest::from_json(request_json);
 
             if (!mcp_request.has_value()) {
-                return make_response(beast::http::status::bad_request,
-                                     R"({"error":"Invalid JSON-RPC request"})");
+                return make_jsonrpc_error(beast::http::status::bad_request, err_id,
+                                          mcp::error_codes::INVALID_REQUEST,
+                                          "Invalid JSON-RPC request");
             }
 
             mcp::McpResponse mcp_response = mcp_server_.handle_request(mcp_request.value());
@@ -184,11 +227,13 @@ namespace ida_mcp::http {
 
             return make_response(beast::http::status::ok, mcp_response.to_json().dump());
         } catch (const json::parse_error &e) {
-            return make_response(beast::http::status::bad_request,
-                                 json{{"error", "JSON parse error"}, {"details", e.what()}}.dump());
+            return make_jsonrpc_error(beast::http::status::bad_request, nullptr,
+                                      mcp::error_codes::PARSE_ERROR,
+                                      std::string("JSON parse error: ") + e.what());
         } catch (const std::exception &e) {
-            return make_response(beast::http::status::internal_server_error,
-                                 json{{"error", "Internal server error"}, {"details", e.what()}}.dump());
+            return make_jsonrpc_error(beast::http::status::internal_server_error, nullptr,
+                                      mcp::error_codes::INTERNAL_ERROR,
+                                      std::string("Internal server error: ") + e.what());
         }
     }
 } // namespace ida_mcp::http
