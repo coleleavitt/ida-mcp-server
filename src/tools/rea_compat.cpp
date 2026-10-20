@@ -4,6 +4,10 @@
 // Contract: rea/src/ida/IdaProtocolValues.ts and IdaOperationRunner.ts.
 
 #include "tools/tools.hpp"
+#ifdef HAS_HEXRAYS
+#include <hexrays.hpp>
+#include <lines.hpp>
+#endif
 #include <nalt.hpp>
 #include <set>
 
@@ -278,9 +282,45 @@ namespace ida_mcp::tools::rea_compat {
             def.annotations->read_only_hint = true;
             server.register_tool(def, std::move(handler));
         }
+        // Hex-Rays output only. The main tool also returns extern/thunk stubs,
+        // retries on temporarily patched bytes, lifts microcode and falls back to
+        // inspection under "pseudocode", and runs class recovery that writes
+        // types; none of that is read-only Hex-Rays pseudocode.
+        json decompile_function(const json &params) {
+#ifdef HAS_HEXRAYS
+            ea_t ea = require_ea(params, "address");
+            if (!init_hexrays_plugin())
+                throw std::runtime_error("Hex-Rays decompiler is not available");
+            func_t *func = get_func(ea);
+            if (func == nullptr)
+                throw std::runtime_error("No function at " + hex(ea));
+            if ((func->flags & FUNC_THUNK) != 0)
+                return nullptr;
+            if (segment_t *seg = getseg(ea); seg != nullptr && seg->type == SEG_XTRN)
+                return nullptr;
+            if (ida_mcp::is_go_pathological_func(func))
+                return nullptr;
+            hexrays_failure_t hf;
+            cfuncptr_t cfunc = decompile(func, &hf, DECOMP_NO_WAIT);
+            if (cfunc == nullptr)
+                return nullptr;
+            std::string text;
+            const strvec_t &lines = cfunc->get_pseudocode();
+            for (size_t i = 0; i < lines.size(); ++i) {
+                qstring line;
+                tag_remove(&line, lines[i].line);
+                if (i > 0)
+                    text += '\n';
+                text += line.c_str();
+            }
+            return utf8_clean(text);
+#else
+            throw std::runtime_error("Hex-Rays support was not compiled in");
+#endif
+        }
     }
 
-    void register_tools(mcp::McpServer &server, const mcp::McpServer &main_server) {
+    void register_tools(mcp::McpServer &server) {
         add(server, "get_metadata", "Input path, module, SHA-256 and image base of the open database",
             object_schema({}), get_metadata);
         add(server, "list_functions", "Page through all functions",
@@ -300,20 +340,7 @@ namespace ida_mcp::tools::rea_compat {
         add(server, "get_xrefs_to", "Cross-references to an address",
             object_schema({{"address", "string"}}, {"address"}), get_xrefs_to);
 
-        // Reuse the main decompiler tool, keeping its extern, thunk and pathological-function guards.
-        mcp::ToolHandler decompile = main_server.find_tool_handler("decompile_function");
         add(server, "decompile_function", "Hex-Rays pseudocode of a function, or null when decompilation fails",
-            object_schema({{"address", "string"}}, {"address"}),
-            [decompile](const json &params) -> json {
-                if (!decompile)
-                    return nullptr;
-                try {
-                    json result = decompile(params);
-                    if (result.contains("pseudocode") && result["pseudocode"].is_string())
-                        return utf8_clean(result["pseudocode"].get<std::string>());
-                } catch (const std::exception &) {
-                }
-                return nullptr;
-            });
+            object_schema({{"address", "string"}}, {"address"}), decompile_function);
     }
 } // namespace ida_mcp::tools::rea_compat

@@ -18,8 +18,6 @@ public:
     // ========================================================================
     void register_tool(const ToolDefinition& def, ToolHandler handler);
     std::vector<ToolDefinition> get_tools() const;
-    // Empty when no tool has this name
-    ToolHandler find_tool_handler(const std::string& name) const;
 
     // ========================================================================
     // Resource Registration (MCP 2025-11-25)

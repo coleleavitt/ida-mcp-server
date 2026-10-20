@@ -30,12 +30,6 @@ namespace ida_mcp::mcp {
         return result;
     }
 
-    ToolHandler McpServer::find_tool_handler(const std::string &name) const {
-        std::lock_guard<std::mutex> lock(mutex_);
-        auto it = tools_.find(name);
-        return it == tools_.end() ? ToolHandler{} : it->second.handler;
-    }
-
     McpResponse McpServer::handle_request(const McpRequest &request) {
         // Handle notifications (no id) - including cancellation
         if (!request.id.has_value()) {

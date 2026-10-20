@@ -232,7 +232,7 @@ namespace xtensa_options {
 
 // mrexodia/ida-pro-mcp 1.4 read-only profile for REA, served on /rea/mcp
 namespace rea_compat {
-    void register_tools(mcp::McpServer& server, const mcp::McpServer& main_server);
+    void register_tools(mcp::McpServer& server);
 }
 
 namespace cpp_class_recovery {

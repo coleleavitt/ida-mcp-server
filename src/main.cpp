@@ -95,7 +95,7 @@ bool idaapi mcp_plugin_t::run(size_t arg) {
             tool_list.size(), tool_profile);
 
         rea_server = std::make_unique<mcp::McpServer>();
-        tools::rea_compat::register_tools(*rea_server, *mcp_server);
+        tools::rea_compat::register_tools(*rea_server);
 
         // Create and bind HTTP server (bind on main thread so failures are caught here)
         msg("MCP Server: Starting HTTP server on %s:%d\n", bind_addr, port);
