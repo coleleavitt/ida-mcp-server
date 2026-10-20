@@ -174,6 +174,7 @@ set(TOOLS_SOURCES
         src/tools/objc_deep.cpp
         src/tools/xtensa_options.cpp
         src/tools/cpp_class_recovery.cpp
+        src/tools/rea_compat.cpp
 )
 
 # Hex-Rays dependent tools (conditionally built)

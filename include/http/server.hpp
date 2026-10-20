@@ -12,7 +12,9 @@ namespace ida_mcp::http {
 
 class HttpServer {
 public:
-    HttpServer(const std::string& address, uint16_t port, mcp::McpServer& mcp_server);
+    // rea_server, when set, serves /rea/mcp
+    HttpServer(const std::string& address, uint16_t port, mcp::McpServer& mcp_server,
+               mcp::McpServer* rea_server = nullptr);
     ~HttpServer();
 
     // Bind the listening socket (call from main thread — throws on failure)
@@ -38,6 +40,7 @@ private:
     std::string address_;
     uint16_t port_;
     mcp::McpServer& mcp_server_;
+    mcp::McpServer* rea_server_;
     net::io_context io_context_;
     std::unique_ptr<tcp::acceptor> acceptor_;
     std::atomic<bool> running_{false};

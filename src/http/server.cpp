@@ -6,10 +6,12 @@ constexpr const char* MCP_PROTOCOL_VERSION = "2025-11-25";
 constexpr const char* MCP_PROTOCOL_VERSION_HEADER = "MCP-Protocol-Version";
 namespace ida_mcp::http {
 
-    HttpServer::HttpServer(const std::string &address, uint16_t port, mcp::McpServer &mcp_server)
+    HttpServer::HttpServer(const std::string &address, uint16_t port, mcp::McpServer &mcp_server,
+                           mcp::McpServer *rea_server)
         : address_(address)
           , port_(port)
-          , mcp_server_(mcp_server) {
+          , mcp_server_(mcp_server)
+          , rea_server_(rea_server) {
     }
 
     HttpServer::~HttpServer() {
@@ -166,20 +168,70 @@ namespace ida_mcp::http {
                    v == "2025-06-18" || v == "2025-11-25";
         };
 
-        // StreamableHTTP: GET (SSE stream) and DELETE (session termination) are not
-        // offered by this stateless server. Advertise the supported method on 405.
-        if (req.method() == beast::http::verb::get ||
-            req.method() == beast::http::verb::delete_) {
-            return make_empty_response(beast::http::status::method_not_allowed, "POST");
+        std::string target(req.target());
+        std::string target_path = target.substr(0, target.find('?'));
+
+        // Browser/curl-friendly discovery endpoints. Tool execution remains POST-only
+        // because many tools can mutate the IDB or debugger state.
+        if (req.method() == beast::http::verb::get) {
+            // MCP clients open an SSE stream with GET; this stateless server has none.
+            auto accept = req.find(beast::http::field::accept);
+            if (accept != req.end() &&
+                std::string_view(accept->value()).find("text/event-stream") != std::string_view::npos) {
+                return make_empty_response(beast::http::status::method_not_allowed, "POST");
+            }
+
+            if (target_path == "/" || target_path == "/mcp" || target_path == "/health") {
+                json body = {
+                    {"server", "ida-mcp-server"},
+                    {"status", "ready"},
+                    {"protocolVersion", MCP_PROTOCOL_VERSION},
+                    {"mcpEndpoint", "/mcp"},
+                    {"toolsEndpoint", "/tools"},
+                    {"usage", {
+                        {"initialize", "POST /mcp with a JSON-RPC initialize request"},
+                        {"listTools", "GET /tools or POST /mcp tools/list"},
+                        {"callTools", "POST /mcp tools/call"}
+                    }}
+                };
+                return make_response(beast::http::status::ok, body.dump());
+            }
+
+            if (target_path == "/tools" || target_path == "/tools/list") {
+                json tools = json::array();
+                for (const auto &tool: mcp_server_.get_tools()) {
+                    tools.push_back(tool.to_json());
+                }
+
+                json body = {
+                    {"tools", tools},
+                    {"count", tools.size()}
+                };
+                return make_response(beast::http::status::ok, body.dump());
+            }
+
+            return make_jsonrpc_error(beast::http::status::not_found, nullptr,
+                                      mcp::error_codes::INVALID_REQUEST, "Not found");
+        }
+
+        // StreamableHTTP: DELETE (session termination) is not offered by this
+        // stateless server. Advertise the supported methods on 405.
+        if (req.method() == beast::http::verb::delete_) {
+            return make_empty_response(beast::http::status::method_not_allowed, "GET, POST");
         }
 
         if (req.method() != beast::http::verb::post) {
             return make_jsonrpc_error(beast::http::status::method_not_allowed, nullptr,
                                       mcp::error_codes::INVALID_REQUEST,
-                                      "Only POST requests are supported");
+                                      "Only GET and POST requests are supported");
         }
 
-        if (req.target() != "/mcp" && req.target() != "/") {
+        mcp::McpServer *server = nullptr;
+        if (target_path == "/mcp" || target_path == "/")
+            server = &mcp_server_;
+        else if (target_path == "/rea/mcp")
+            server = rea_server_;
+        if (server == nullptr) {
             return make_jsonrpc_error(beast::http::status::not_found, nullptr,
                                       mcp::error_codes::INVALID_REQUEST, "Not found");
         }
@@ -218,7 +270,7 @@ namespace ida_mcp::http {
                                           "Invalid JSON-RPC request");
             }
 
-            mcp::McpResponse mcp_response = mcp_server_.handle_request(mcp_request.value());
+            mcp::McpResponse mcp_response = server->handle_request(mcp_request.value());
 
             // MCP notifications (no id) get 202 Accepted with no body per StreamableHTTP spec
             if (mcp_response.is_notification) {

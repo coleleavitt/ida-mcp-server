@@ -7,6 +7,7 @@
 #include "mcp/server.hpp"
 #include "http/server.hpp"
 #include "tools/tools.hpp"
+#include <cstdlib>
 #include <memory>
 #include <thread>
 
@@ -17,6 +18,7 @@ using namespace ida_mcp;
 //--------------------------------------------------------------------------
 struct mcp_plugin_t : public plugmod_t {
     std::unique_ptr<mcp::McpServer> mcp_server;
+    std::unique_ptr<mcp::McpServer> rea_server;
     std::unique_ptr<ida_mcp::http::HttpServer> http_server;
     std::unique_ptr<std::thread> server_thread;
     bool server_running = false;
@@ -52,6 +54,8 @@ mcp_plugin_t::~mcp_plugin_t() {
 // Run plugin
 //--------------------------------------------------------------------------
 bool idaapi mcp_plugin_t::run(size_t arg) {
+    (void)arg;
+
     if (server_running) {
         // Server already running - stop it
         msg("MCP Server: Stopping...\n");
@@ -63,6 +67,7 @@ bool idaapi mcp_plugin_t::run(size_t arg) {
         // so http_server must be destroyed first
         http_server.reset();
         server_thread.reset();
+        rea_server.reset();
         mcp_server.reset();
         server_running = false;
         msg("MCP Server: Stopped\n");
@@ -83,11 +88,19 @@ bool idaapi mcp_plugin_t::run(size_t arg) {
         tools::register_all_tools(*mcp_server);
 
         auto tool_list = mcp_server->get_tools();
-        msg("MCP Server: Registered %zu tools\n", tool_list.size());
+        const char *tool_profile = std::getenv("IDA_MCP_TOOL_PROFILE");
+        if (tool_profile == nullptr || *tool_profile == '\0')
+            tool_profile = "core";
+        msg("MCP Server: Registered %zu tools (profile: %s)\n",
+            tool_list.size(), tool_profile);
+
+        rea_server = std::make_unique<mcp::McpServer>();
+        tools::rea_compat::register_tools(*rea_server, *mcp_server);
 
         // Create and bind HTTP server (bind on main thread so failures are caught here)
         msg("MCP Server: Starting HTTP server on %s:%d\n", bind_addr, port);
-        http_server = std::make_unique<ida_mcp::http::HttpServer>(bind_addr, port, *mcp_server);
+        http_server = std::make_unique<ida_mcp::http::HttpServer>(bind_addr, port, *mcp_server,
+                                                                   rea_server.get());
         http_server->bind();
 
         // Accept loop in background thread
@@ -98,6 +111,7 @@ bool idaapi mcp_plugin_t::run(size_t arg) {
         server_running = true;
 
         msg("MCP Server: Ready! Access at http://%s:%d\n", bind_addr, port);
+        msg("MCP Server: REA (ida-pro-mcp 1.4 profile) at http://%s:%d/rea/mcp\n", bind_addr, port);
         msg("MCP Server: Run plugin again to stop server\n");
 
         return true;
@@ -120,8 +134,12 @@ static const char help[] =
         "\n"
         "Usage:\n"
         "  1. Run the plugin to start the HTTP server\n"
-        "  2. Connect MCP clients to http://127.0.0.1:8080\n"
-        "  3. Run the plugin again to stop the server\n"
+        "  2. Connect MCP clients to http://127.0.0.1:7777/mcp\n"
+        "  3. Browser/curl discovery: http://127.0.0.1:7777/ and /tools\n"
+        "     REA attaches through http://127.0.0.1:7777/rea/mcp\n"
+        "  4. Run the plugin again to stop the server\n"
+        "\n"
+        "Set IDA_MCP_TOOL_PROFILE=all before starting IDA to expose every tool.\n"
         "\n"
         "The server provides tools for:\n"
         "  - Function analysis\n"
