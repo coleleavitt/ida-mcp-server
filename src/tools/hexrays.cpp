@@ -213,8 +213,11 @@ namespace ida_mcp::tools::hexrays {
         }
 
         if (cfunc == nullptr) {
+            // The patch retry and the microcode lift build new microcode, which
+            // inherits the same timeout, so a timed-out function skips them.
+            const bool timed_out = hf.code == MERR_TIMEOUT;
             extlang_object_t python = find_extlang_by_name("Python");
-            if (python != nullptr) {
+            if (!timed_out && python != nullptr) {
                 char tmpname[QMAXPATH];
                 qtmpnam(tmpname, sizeof(tmpname));
                 qstring tmp_json_path = tmpname;
@@ -338,6 +341,8 @@ namespace ida_mcp::tools::hexrays {
             }
 
             qstring err_str = hf.desc();
+            if (timed_out)
+                err_str.sprnt("timed out after %d ms (MERR_TIMEOUT)", get_decompiler_timeout());
 
             qstring fname;
             get_func_name(&fname, func->start_ea);
@@ -365,10 +370,7 @@ namespace ida_mcp::tools::hexrays {
                 "// Address:        %s\n"
                 "// Name:           %s\n"
                 "// Function size:  %llu bytes (%d instructions%s)\n"
-                "// Why this fallback: tier-1 (decompile) and tier-2/3 (Python\n"
-                "//   patch + microcode lift) both failed. This is the last\n"
-                "//   resort - raw disassembly emitted as comments so the\n"
-                "//   analyst still has visibility on the function body.\n"
+                "%s"
                 "// ============================================================\n"
                 "//\n"
                 "// Instructions:\n"
@@ -385,6 +387,14 @@ namespace ida_mcp::tools::hexrays {
                 (unsigned long long)func->size(),
                 instr_count,
                 truncated ? ", truncated" : "",
+                timed_out
+                    ? "// Why this fallback: Hex-Rays hit its decompilation timeout (see\n"
+                      "//   set_decompiler_timeout). The patch retry and microcode lift\n"
+                      "//   were skipped: they build microcode under the same timeout.\n"
+                    : "// Why this fallback: tier-1 (decompile) and tier-2/3 (Python\n"
+                      "//   patch + microcode lift) both failed. This is the last\n"
+                      "//   resort - raw disassembly emitted as comments so the\n"
+                      "//   analyst still has visibility on the function body.\n",
                 raw_disasm.empty() ? "//   <no instructions decoded>\n" : raw_disasm.c_str(),
                 fname.empty() ? "raw_disasm_func" : fname.c_str());
 
@@ -395,6 +405,7 @@ namespace ida_mcp::tools::hexrays {
                 {"signature",            "unknown"},
                 {"decompilation_method", "raw_disasm_fallback"},
                 {"hexrays_error",        err_str.c_str()},
+                {"timed_out",            timed_out},
                 {"size_bytes",           (unsigned long long)func->size()},
                 {"instr_count",          instr_count},
                 {"instr_truncated",      truncated},
@@ -670,6 +681,37 @@ namespace ida_mcp::tools::hexrays {
 #endif
     }
 
+    static json handle_get_decompiler_status(const json &) {
+#ifdef HAS_HEXRAYS
+        if (!init_hexrays_plugin())
+            return json{{"hexrays_loaded", false}, {"decompiler_usable", false}};
+        return json{
+            {"hexrays_loaded", true},
+            {"version", get_hexrays_version()},
+            {"decompiler_usable", is_decompiler_usable()},
+            {"timeout_msecs", get_decompiler_timeout()}
+        };
+#else
+        throw std::runtime_error("Hexrays support not compiled in");
+#endif
+    }
+
+    static json handle_set_decompiler_timeout(const json &params) {
+#ifdef HAS_HEXRAYS
+        if (!params.contains("msecs") || !params["msecs"].is_number_integer())
+            throw std::runtime_error("Missing required parameter: msecs");
+        const int64 msecs = params["msecs"].get<int64>();
+        if (msecs < 0 || msecs > INT_MAX)
+            throw std::runtime_error("msecs must be between 0 and " + std::to_string(INT_MAX));
+        if (!init_hexrays_plugin())
+            throw std::runtime_error("Hexrays decompiler not available (check license)");
+        const int previous = set_decompiler_timeout(static_cast<int>(msecs));
+        return json{{"previous_msecs", previous}, {"timeout_msecs", get_decompiler_timeout()}};
+#else
+        throw std::runtime_error("Hexrays support not compiled in");
+#endif
+    }
+
     void register_tools(mcp::McpServer &server) {
         // decompile_function tool
         {
@@ -691,6 +733,31 @@ namespace ida_mcp::tools::hexrays {
                 {"required", json::array({"address"})}
             };
             server.register_tool(def, decompile_function);
+        }
+
+        {
+            mcp::ToolDefinition def;
+            def.name = "get_decompiler_status";
+            def.description = "Report whether Hex-Rays is loaded and usable for this database "
+                    "(license add-on check), its version, and the decompilation timeout in ms (0 = none)";
+            def.input_schema = json{{"type", "object"}, {"properties", json::object()}};
+            server.register_tool(def, handle_get_decompiler_status);
+        }
+
+        {
+            mcp::ToolDefinition def;
+            def.name = "set_decompiler_timeout";
+            def.description = "Set the Hex-Rays per-function decompilation timeout. A function that "
+                    "exceeds it fails with MERR_TIMEOUT. Returns the previous value.";
+            def.input_schema = json{
+                {"type", "object"},
+                {"properties", {
+                    {"msecs", {{"type", "integer"}, {"minimum", 0},
+                               {"description", "Timeout in milliseconds; 0 = no limit"}}}
+                }},
+                {"required", json::array({"msecs"})}
+            };
+            server.register_tool(def, handle_set_decompiler_timeout);
         }
 
         // export_all_decompiled tool

@@ -302,8 +302,14 @@ namespace ida_mcp::tools::rea_compat {
                 return nullptr;
             hexrays_failure_t hf;
             cfuncptr_t cfunc = decompile(func, &hf, DECOMP_NO_WAIT);
-            if (cfunc == nullptr)
+            if (cfunc == nullptr) {
+                // The 1.4 contract reports every failure as null; leave the
+                // timeout distinguishable in IDA's output window.
+                if (hf.code == MERR_TIMEOUT)
+                    msg("REA decompile_function: %a timed out after %d ms (MERR_TIMEOUT)\n",
+                        func->start_ea, get_decompiler_timeout());
                 return nullptr;
+            }
             std::string text;
             const strvec_t &lines = cfunc->get_pseudocode();
             for (size_t i = 0; i < lines.size(); ++i) {
