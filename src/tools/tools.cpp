@@ -69,6 +69,7 @@ namespace ida_mcp::tools {
         source_info::register_tools(server);
         objc_analysis::register_tools(server);
         objc_deep::register_tools(server);
+        classes::register_tools(server);
 
         if (!register_advanced_tools())
             return;

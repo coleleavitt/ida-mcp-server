@@ -241,4 +241,8 @@ namespace cpp_class_recovery {
     void ensure_recovery_done() noexcept;
 }
 
+namespace classes {
+    void register_tools(mcp::McpServer& server);
+}
+
 } // namespace ida_mcp::tools

@@ -183,6 +183,7 @@ set(HEXRAYS_TOOLS_SOURCES
         src/tools/hexrays.cpp
         src/tools/decompile_all.cpp
         src/tools/microcode.cpp
+        src/tools/classes.cpp
 )
 
 # Combine all sources
