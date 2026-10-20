@@ -330,7 +330,8 @@ namespace ida_mcp::tools::callers {
                 if (op.type == o_reg) {
                     // Register-indirect call - try to track register value
                     reg_value_info_t reg_value;
-                    if (find_reg_value_info(&reg_value, addr, op.reg, 0)) {  // 0 = use default depth from config
+                    if (find_reg_value_info(&reg_value, addr, op.reg, 0)) {
+                        // 0 = use default depth from config
                         uval_t target_addr;
                         if (reg_value.get_num(&target_addr)) {
                             // Resolved to a constant - this is the target!

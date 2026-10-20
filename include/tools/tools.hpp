@@ -178,4 +178,75 @@ namespace metadata_backup {
     void register_tools(mcp::McpServer& server);
 }
 
+namespace decompile_all {
+    void register_tools(mcp::McpServer& server);
+}
+
+namespace microcode {
+    void register_tools(mcp::McpServer& server);
+}
+
+namespace dirtree_tools {
+    void register_tools(mcp::McpServer& server);
+}
+
+namespace import_entry {
+    void register_tools(mcp::McpServer& server);
+}
+
+namespace signatures {
+    void register_tools(mcp::McpServer& server);
+}
+
+namespace find_items {
+    void register_tools(mcp::McpServer& server);
+}
+
+namespace data_creation {
+    void register_tools(mcp::McpServer& server);
+}
+
+namespace xref_manipulation {
+    void register_tools(mcp::McpServer& server);
+}
+
+namespace segment_manipulation {
+    void register_tools(mcp::McpServer& server);
+}
+
+namespace source_info {
+    void register_tools(mcp::McpServer& server);
+}
+
+namespace objc_analysis {
+    void register_tools(mcp::McpServer& server);
+}
+
+namespace objc_deep {
+    void register_tools(mcp::McpServer& server);
+}
+
+namespace xtensa_options {
+    void register_tools(mcp::McpServer& server);
+}
+
+// mrexodia/ida-pro-mcp 1.4 read-only profile for REA, served on /rea/mcp
+namespace rea_compat {
+    void register_tools(mcp::McpServer& server);
+}
+
+namespace cpp_class_recovery {
+    void register_tools(mcp::McpServer& server);
+
+    void ensure_recovery_done() noexcept;
+}
+
+namespace classes {
+    void register_tools(mcp::McpServer& server);
+}
+
+namespace listing_export {
+    void register_tools(mcp::McpServer& server);
+}
+
 } // namespace ida_mcp::tools

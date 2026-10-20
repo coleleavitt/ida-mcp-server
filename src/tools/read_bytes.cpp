@@ -60,13 +60,13 @@ namespace ida_mcp::tools::read_bytes {
 
             // Read bytes
             std::vector<uint8_t> buf(size);
-            size_t bytes_read = get_bytes(buf.data(), size, ea, GMB_READALL);
+            ssize_t bytes_read = get_bytes(buf.data(), size, ea, GMB_READALL);
 
-            if (bytes_read == 0) {
+            if (bytes_read <= 0) {
                 throw std::runtime_error("Failed to read bytes from " + format_ea(ea));
             }
 
-            buf.resize(bytes_read);
+            buf.resize(static_cast<size_t>(bytes_read));
 
             // Create hex dump
             std::vector<std::string> hex_lines;

@@ -50,8 +50,10 @@ namespace ida_mcp::tools::metadata {
             }
         }
 
-        json handle_get_binary_metadata(const json &params) {
+        json handle_get_binary_metadata(const json &/*params*/) {
             // Get processor/architecture name
+            // Use qstring::find() directly - do NOT convert to std::string
+            // as that can crash if qstring internals differ from plugin ABI
             qstring procname = inf_get_procname();
 
             // Get file type
@@ -91,27 +93,36 @@ namespace ida_mcp::tools::metadata {
             };
 
             // Add ARM-specific information if this is an ARM binary
-            std::string proc_str = procname.c_str();
-            if (proc_str.find("ARM") != std::string::npos ||
-                proc_str.find("arm") != std::string::npos ||
-                proc_str.find("AARCH64") != std::string::npos ||
-                proc_str.find("aarch64") != std::string::npos) {
-
+            // Use qstring::find() to avoid std::string ABI issues
+            bool is_arm = procname.find("ARM") != qstring::npos ||
+                          procname.find("arm") != qstring::npos ||
+                          procname.find("AARCH64") != qstring::npos ||
+                          procname.find("aarch64") != qstring::npos;
+            if (is_arm) {
                 json arm_info = json::object();
 
                 // Detect ARM64 vs ARM32
-                bool is_arm64 = inf_is_64bit() || proc_str.find("64") != std::string::npos ||
-                               proc_str.find("AARCH64") != std::string::npos;
+                bool is_arm64 = inf_is_64bit() || procname.find("64") != qstring::npos ||
+                                procname.find("AARCH64") != qstring::npos;
                 arm_info["is_arm64"] = is_arm64;
                 arm_info["is_arm32"] = !is_arm64;
 
                 if (is_arm64) {
-                    // ARM64-specific features
-                    arm_info["supports_pac"] = true;  // ARM64E pointer authentication
-                    arm_info["supports_bti"] = true;  // Branch Target Identification
-                    arm_info["supports_mte"] = true;  // Memory Tagging Extension
-                    arm_info["supports_atomics"] = true; // LSE atomics
+                    // ARM64-specific features - note: these are architecture capabilities,
+                    // actual availability depends on specific CPU and OS
                     arm_info["architecture"] = "ARMv8-A or later";
+                    // Don't claim specific extension support without actually checking;
+                    // these are optional extensions introduced in different architecture versions:
+                    // - PAC (Pointer Authentication): ARMv8.3-A
+                    // - BTI (Branch Target Identification): ARMv8.5-A
+                    // - MTE (Memory Tagging Extension): ARMv8.5-A
+                    // - LSE (Large System Extensions / Atomics): ARMv8.1-A
+                    arm_info["possible_extensions"] = json::array({
+                        "PAC (ARMv8.3+)",
+                        "BTI (ARMv8.5+)",
+                        "MTE (ARMv8.5+)",
+                        "LSE atomics (ARMv8.1+)"
+                    });
                 } else {
                     arm_info["architecture"] = "ARMv7 or earlier";
                 }
@@ -131,7 +142,6 @@ namespace ida_mcp::tools::metadata {
                 bool has_objc = false;
                 bool has_swift = false;
                 bool has_function_starts = false;
-                bool has_data_in_code = false;
                 bool has_encrypted = false;
 
                 // Count text segments without execute permission (potential encryption)
@@ -140,37 +150,27 @@ namespace ida_mcp::tools::metadata {
                 while (seg != nullptr) {
                     qstring seg_name;
                     if (get_segm_name(&seg_name, seg) > 0) {
-                        std::string name_str = seg_name.c_str();
-                        if (name_str.find("__LINKEDIT") != std::string::npos) has_linkedit = true;
-                        if (name_str.find("__DATA_CONST") != std::string::npos) has_data_const = true;
-                        if (name_str.find("__objc") != std::string::npos) has_objc = true;
-                        if (name_str.find("__swift") != std::string::npos) has_swift = true;
+                        if (seg_name.find("__LINKEDIT") != qstring::npos) has_linkedit = true;
+                        if (seg_name.find("__DATA_CONST") != qstring::npos) has_data_const = true;
+                        if (seg_name.find("__objc") != qstring::npos) has_objc = true;
+                        if (seg_name.find("__swift") != qstring::npos) has_swift = true;
 
-                        // Detect encrypted segments: __TEXT without execute permission
-                        if (name_str.find("__TEXT") != std::string::npos) {
+                        if (seg_name.find("__TEXT") != qstring::npos) {
                             if ((seg->perm & SEGPERM_EXEC) == 0) {
                                 text_segments_no_exec++;
                                 has_encrypted = true;
                             }
                         }
 
-                        // Detect function starts: presence of __LINKEDIT suggests load commands
-                        // (LC_FUNCTION_STARTS data is stored in __LINKEDIT)
-                        if (name_str.find("__LINKEDIT") != std::string::npos && seg->size() > 0) {
+                        if (seg_name.find("__LINKEDIT") != qstring::npos && seg->size() > 0) {
                             has_function_starts = true;
                         }
-
-                        // Detect data-in-code: check for __DATA_CONST or __const sections
-                        if (name_str.find("__const") != std::string::npos ||
-                            name_str.find("__DATA_CONST") != std::string::npos) {
-                            has_data_in_code = true;
-                        }
                     }
-                    seg = get_next_seg(seg->end_ea);
+                    seg = get_next_seg(seg->start_ea);
                 }
 
                 macho_info["has_linkedit"] = has_linkedit;
-                macho_info["has_data_const"] = has_data_const;  // Indicates modern Mach-O
+                macho_info["has_data_const"] = has_data_const; // Indicates modern Mach-O
                 macho_info["has_objc_sections"] = has_objc;
                 macho_info["has_swift_sections"] = has_swift;
 
@@ -180,11 +180,9 @@ namespace ida_mcp::tools::metadata {
                     macho_info["function_starts_info"] = "LC_FUNCTION_STARTS likely present (__LINKEDIT found)";
                 }
 
-                // LC_DATA_IN_CODE detection (heuristic: const sections)
-                if (has_data_in_code) {
-                    macho_info["likely_has_data_in_code"] = true;
-                    macho_info["data_in_code_info"] = "LC_DATA_IN_CODE likely present (const sections found)";
-                }
+                // Note: LC_DATA_IN_CODE cannot be reliably detected from segment analysis.
+                // It marks data regions within code sections, which would require parsing
+                // the Mach-O load commands directly.
 
                 // Encrypted segment detection
                 if (has_encrypted) {

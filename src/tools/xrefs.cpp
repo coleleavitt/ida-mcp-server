@@ -48,7 +48,7 @@ namespace ida_mcp::tools::xrefs {
         bool include_flow = params.value("include_flow", false);
 
         // Determine flags: skip flow xrefs unless requested
-        int flags = include_flow ? XREF_ALL : XREF_DATA;
+        int flags = include_flow ? XREF_ALL : XREF_FAR;
 
         json xrefs = json::array();
         xrefblk_t xb;
@@ -75,7 +75,7 @@ namespace ida_mcp::tools::xrefs {
         bool include_flow = params.value("include_flow", false);
 
         // Determine flags: skip flow xrefs unless requested
-        int flags = include_flow ? XREF_ALL : XREF_DATA;
+        int flags = include_flow ? XREF_ALL : XREF_FAR;
 
         json xrefs = json::array();
         xrefblk_t xb;
@@ -272,9 +272,9 @@ namespace ida_mcp::tools::xrefs {
 
         json xrefs = json::array();
 
-        for (ea_t from = include_flow ? get_first_fcref_to(ea) : get_first_cref_to(ea);
+        for (ea_t from = include_flow ? get_first_cref_to(ea) : get_first_fcref_to(ea);
              from != BADADDR;
-             from = include_flow ? get_next_fcref_to(ea, from) : get_next_cref_to(ea, from)) {
+             from = include_flow ? get_next_cref_to(ea, from) : get_next_fcref_to(ea, from)) {
             xrefblk_t xb;
             // Find the specific xref to get its type
             int flags = include_flow ? XREF_ALL : XREF_FAR;
@@ -305,9 +305,9 @@ namespace ida_mcp::tools::xrefs {
 
         json xrefs = json::array();
 
-        for (ea_t to = include_flow ? get_first_fcref_from(ea) : get_first_cref_from(ea);
+        for (ea_t to = include_flow ? get_first_cref_from(ea) : get_first_fcref_from(ea);
              to != BADADDR;
-             to = include_flow ? get_next_fcref_from(ea, to) : get_next_cref_from(ea, to)) {
+             to = include_flow ? get_next_cref_from(ea, to) : get_next_fcref_from(ea, to)) {
             xrefblk_t xb;
             // Find the specific xref to get its type
             int flags = include_flow ? XREF_ALL : XREF_FAR;

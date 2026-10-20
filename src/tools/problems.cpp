@@ -183,7 +183,7 @@ namespace ida_mcp::tools::problems {
             def.description = "List all analysis problems";
             def.input_schema = json{
                 {"type", "object"},
-                {"properties", {}}
+                {"properties", json::object()}
             };
             server.register_tool(def, handle_list_all_problems);
         }
