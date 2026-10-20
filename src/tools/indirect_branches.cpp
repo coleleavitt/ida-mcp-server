@@ -215,7 +215,11 @@ namespace ida_mcp::tools::indirect_branches {
                         reg_value_info_t reg_value;
                         if (find_reg_value_info(&reg_value, ea, op.reg, 0)) {
                             result["register_tracking"] = json{
-                                {"state", reg_value.is_unknown() ? "unknown" : (reg_value.is_num() ? "resolved" : "spd")}
+                                {"state", reg_value.is_num() ? "resolved"
+                                          : reg_value.is_spd() ? "spd"
+                                          : reg_value.is_numloop() ? "numloop"
+                                          : reg_value.is_unknown() ? "unknown"
+                                          : "special"}
                             };
 
                             uval_t target_addr;
