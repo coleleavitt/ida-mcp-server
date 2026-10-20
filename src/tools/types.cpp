@@ -2,7 +2,10 @@
 #include <typeinf.hpp>
 #include <funcs.hpp>
 #include <ida.hpp>
-#include <ida93_new_apis.hpp>
+
+// Exported by libida but absent from the public SDK headers
+idaman void ida_export generate_deref_chain(qstring *out, ea_t ea, const void *deref_info, bool detailed);
+idaman int ida_export get_deref_color(void);
 
 namespace ida_mcp::tools::types {
     namespace {
@@ -557,7 +560,7 @@ namespace ida_mcp::tools::types {
                 throw std::runtime_error("No type at " + format_ea(ea_opt.value()));
 
             qstring name;
-            bool ok = tinfo_t__build_anon_type_name(&name, &tif);
+            bool ok = tif.build_anon_type_name(&name);
 
             qstring type_str;
             tif.print(&type_str);
@@ -586,7 +589,8 @@ namespace ida_mcp::tools::types {
                 throw std::runtime_error("Failed to get UDT details for: " + name);
 
             size_t before = udt.size();
-            int removed = udt_type_data_t__deduplicate_members(&udt);
+            udt.deduplicate_members();
+            size_t removed = before - udt.size();
 
             return json{
                 {"name", name},
