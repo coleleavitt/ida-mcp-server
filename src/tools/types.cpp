@@ -3,6 +3,11 @@
 #include <funcs.hpp>
 #include <ida.hpp>
 
+// Exported by libida 9.5 without a declaration in typeinf.hpp. The shape is the
+// one IDAPython 9.5 binds: ida_typeinf.py udt_type_data_t.build_autoname() calls
+// _ida_typeinf.udt_type_data_t_build_autoname and returns the name or None.
+idaman bool ida_export udt_type_data_t__build_autoname(const udt_type_data_t *_this, qstring *out);
+
 namespace ida_mcp::tools::types {
     namespace {
         json handle_get_type_info(const json &params) {
@@ -569,6 +574,33 @@ namespace ida_mcp::tools::types {
             };
         }
 
+        json handle_get_udt_autoname(const json &params) {
+            if (!params.contains("name") || !params["name"].is_string())
+                throw std::runtime_error("Missing required parameter: name");
+            const std::string name = params["name"].get<std::string>();
+
+            tinfo_t tif;
+            if (!tif.get_named_type(get_idati(), name.c_str()))
+                throw std::runtime_error("Type not found: " + name);
+            if (!tif.is_struct() && !tif.is_union())
+                throw std::runtime_error("Not a struct/union: " + name);
+
+            udt_type_data_t udt;
+            if (!tif.get_udt_details(&udt))
+                throw std::runtime_error("Failed to get UDT details for: " + name);
+
+            qstring autoname;
+            const bool ok = udt_type_data_t__build_autoname(&udt, &autoname);
+            json result = {
+                {"name", name},
+                {"kind", tif.is_union() ? "union" : "struct"},
+                {"autoname", ok ? json(autoname.c_str()) : json(nullptr)}
+            };
+            if (!ok)
+                result["reason"] = "A member type cannot be named (e.g. an anonymous udt or a function pointer)";
+            return result;
+        }
+
         json handle_deduplicate_members(const json &params) {
             std::string name = params["name"].get<std::string>();
 
@@ -843,6 +875,21 @@ namespace ida_mcp::tools::types {
                 {"required", json::array({"name"})}
             };
             server.register_tool(def, handle_deduplicate_members);
+        }
+
+        {
+            mcp::ToolDefinition def;
+            def.name = "get_udt_autoname";
+            def.description = "Build the NTF_AUTONAME-style name of a struct/union from its member types "
+                    "(e.g. struct__int_char, _DWORD_x2)";
+            def.input_schema = json{
+                {"type", "object"},
+                {"properties", {
+                    {"name", {{"type", "string"}, {"description", "Struct/union type name"}}}
+                }},
+                {"required", json::array({"name"})}
+            };
+            server.register_tool(def, handle_get_udt_autoname);
         }
     }
 } // namespace ida_mcp::tools::types
