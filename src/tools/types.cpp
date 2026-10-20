@@ -3,10 +3,6 @@
 #include <funcs.hpp>
 #include <ida.hpp>
 
-// Exported by libida but absent from the public SDK headers
-idaman void ida_export generate_deref_chain(qstring *out, ea_t ea, const void *deref_info, bool detailed);
-idaman int ida_export get_deref_color(void);
-
 namespace ida_mcp::tools::types {
     namespace {
         json handle_get_type_info(const json &params) {
@@ -600,24 +596,6 @@ namespace ida_mcp::tools::types {
             };
         }
 
-        json handle_generate_deref(const json &params) {
-            auto ea_opt = parse_ea(params["address"]);
-            if (!ea_opt) throw std::runtime_error("Invalid address");
-
-            bool detailed = params.value("detailed", false);
-            qstring chain;
-            generate_deref_chain(&chain, ea_opt.value(), nullptr, detailed);
-
-            int color = get_deref_color();
-
-            return json{
-                {"address", format_ea(ea_opt.value())},
-                {"deref_chain", chain.empty() ? json(nullptr) : json(chain.c_str())},
-                {"color_index", color},
-                {"has_chain", !chain.empty()}
-            };
-        }
-
     void register_tools(mcp::McpServer &server) {
         // get_type_info
         {
@@ -865,21 +843,6 @@ namespace ida_mcp::tools::types {
                 {"required", json::array({"name"})}
             };
             server.register_tool(def, handle_deduplicate_members);
-        }
-
-        {
-            mcp::ToolDefinition def;
-            def.name = "get_deref_chain";
-            def.description = "Generate pointer dereference chain at address (useful for vtables, linked lists, nested struct access)";
-            def.input_schema = json{
-                {"type", "object"},
-                {"properties", {
-                    {"address", {{"type", "string"}, {"description", "Hex address to dereference"}}},
-                    {"detailed", {{"type", "boolean"}, {"description", "Show detailed chain info (default false)"}}}
-                }},
-                {"required", json::array({"address"})}
-            };
-            server.register_tool(def, handle_generate_deref);
         }
     }
 } // namespace ida_mcp::tools::types
