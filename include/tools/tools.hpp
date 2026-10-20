@@ -245,4 +245,8 @@ namespace classes {
     void register_tools(mcp::McpServer& server);
 }
 
+namespace listing_export {
+    void register_tools(mcp::McpServer& server);
+}
+
 } // namespace ida_mcp::tools

@@ -175,6 +175,7 @@ set(TOOLS_SOURCES
         src/tools/xtensa_options.cpp
         src/tools/cpp_class_recovery.cpp
         src/tools/rea_compat.cpp
+        src/tools/listing_export.cpp
 )
 
 # Hex-Rays dependent tools (conditionally built)
