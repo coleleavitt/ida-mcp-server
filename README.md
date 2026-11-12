@@ -99,3 +99,7 @@ trust, and stop it when you are done.
 
 [RESEARCH.md](RESEARCH.md) has notes from building this plugin: SDK ABI pitfalls such as the missing `__EA64__`, and
 crash fixes found by decompiling IDA's own binaries.
+
+## License
+
+[MIT](LICENSE). IDA Pro and the IDA SDK are products of Hex-Rays and have their own license terms.
