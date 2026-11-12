@@ -6,9 +6,11 @@
 // (internally call get_func(screen_ea())).
 // We use jumpto() to set screen_ea before calling them.
 extern "C" {
-    bool backup_metadata(void);
-    bool has_backup_metadata(void);
-    bool revert_metadata(void);
+bool backup_metadata(void);
+
+bool has_backup_metadata(void);
+
+bool revert_metadata(void);
 }
 
 namespace ida_mcp::tools::metadata_backup {
@@ -110,49 +112,50 @@ namespace ida_mcp::tools::metadata_backup {
         }
     }
 
-    void register_tools(mcp::McpServer &server) {
-        {
+    void register_tools(mcp::McpServer &server) { {
             mcp::ToolDefinition def;
             def.name = "backup_metadata";
             def.description = "Backup the metadata (types, names, comments, etc.) of the function "
-                "containing the given address. Creates a snapshot that can later be restored "
-                "with revert_metadata. IDA 9.3+ only.";
+                    "containing the given address. Creates a snapshot that can later be restored "
+                    "with revert_metadata. IDA 9.3+ only.";
             def.input_schema = json{
                 {"type", "object"},
-                {"properties", {
-                    {"address", {{"type", "string"}, {"description", "Hex address within the target function"}}}
-                }},
+                {
+                    "properties", {
+                        {"address", {{"type", "string"}, {"description", "Hex address within the target function"}}}
+                    }
+                },
                 {"required", json::array({"address"})}
             };
             server.register_tool(def, backup_metadata_impl);
-        }
-
-        {
+        } {
             mcp::ToolDefinition def;
             def.name = "has_backup_metadata";
             def.description = "Check whether a metadata backup exists for the function containing "
-                "the given address. IDA 9.3+ only.";
+                    "the given address. IDA 9.3+ only.";
             def.input_schema = json{
                 {"type", "object"},
-                {"properties", {
-                    {"address", {{"type", "string"}, {"description", "Hex address within the target function"}}}
-                }},
+                {
+                    "properties", {
+                        {"address", {{"type", "string"}, {"description", "Hex address within the target function"}}}
+                    }
+                },
                 {"required", json::array({"address"})}
             };
             server.register_tool(def, has_backup_metadata_impl);
-        }
-
-        {
+        } {
             mcp::ToolDefinition def;
             def.name = "revert_metadata";
             def.description = "Revert the function containing the given address to its previously "
-                "backed-up metadata state. Restores types, names, comments, etc. "
-                "Must have a backup (see has_backup_metadata). IDA 9.3+ only.";
+                    "backed-up metadata state. Restores types, names, comments, etc. "
+                    "Must have a backup (see has_backup_metadata). IDA 9.3+ only.";
             def.input_schema = json{
                 {"type", "object"},
-                {"properties", {
-                    {"address", {{"type", "string"}, {"description", "Hex address within the target function"}}}
-                }},
+                {
+                    "properties", {
+                        {"address", {{"type", "string"}, {"description", "Hex address within the target function"}}}
+                    }
+                },
                 {"required", json::array({"address"})}
             };
             server.register_tool(def, revert_metadata_impl);

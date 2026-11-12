@@ -181,17 +181,19 @@ namespace ida_mcp::tools::navigation {
             name_str = name.c_str();
         } else {
             char buf[32];
-            qsnprintf(buf, sizeof(buf), "sub_%llX", (uint64)func->start_ea);
+            qsnprintf(buf, sizeof(buf), "sub_%llX", (uint64) func->start_ea);
             name_str = buf;
         }
 
         return json{
             {"current_address", format_ea(ea)},
-            {"previous_function", json{
-                {"address", format_ea(func->start_ea)},
-                {"name", name_str},
-                {"size", func->end_ea - func->start_ea}
-            }}
+            {
+                "previous_function", json{
+                    {"address", format_ea(func->start_ea)},
+                    {"name", name_str},
+                    {"size", func->end_ea - func->start_ea}
+                }
+            }
         };
     }
 
@@ -220,17 +222,19 @@ namespace ida_mcp::tools::navigation {
             name_str = name.c_str();
         } else {
             char buf[32];
-            qsnprintf(buf, sizeof(buf), "sub_%llX", (uint64)func->start_ea);
+            qsnprintf(buf, sizeof(buf), "sub_%llX", (uint64) func->start_ea);
             name_str = buf;
         }
 
         return json{
             {"current_address", format_ea(ea)},
-            {"next_function", json{
-                {"address", format_ea(func->start_ea)},
-                {"name", name_str},
-                {"size", func->end_ea - func->start_ea}
-            }}
+            {
+                "next_function", json{
+                    {"address", format_ea(func->start_ea)},
+                    {"name", name_str},
+                    {"size", func->end_ea - func->start_ea}
+                }
+            }
         };
     }
 
@@ -249,12 +253,14 @@ namespace ida_mcp::tools::navigation {
         get_segm_name(&seg_name, seg);
 
         return json{
-            {"first_segment", json{
-                {"name", seg_name.c_str()},
-                {"start", format_ea(seg->start_ea)},
-                {"end", format_ea(seg->end_ea)},
-                {"size", seg->end_ea - seg->start_ea}
-            }}
+            {
+                "first_segment", json{
+                    {"name", seg_name.c_str()},
+                    {"start", format_ea(seg->start_ea)},
+                    {"end", format_ea(seg->end_ea)},
+                    {"size", seg->end_ea - seg->start_ea}
+                }
+            }
         };
     }
 
@@ -281,12 +287,14 @@ namespace ida_mcp::tools::navigation {
 
         return json{
             {"current_address", format_ea(ea)},
-            {"previous_segment", json{
-                {"name", seg_name.c_str()},
-                {"start", format_ea(seg->start_ea)},
-                {"end", format_ea(seg->end_ea)},
-                {"size", seg->end_ea - seg->start_ea}
-            }}
+            {
+                "previous_segment", json{
+                    {"name", seg_name.c_str()},
+                    {"start", format_ea(seg->start_ea)},
+                    {"end", format_ea(seg->end_ea)},
+                    {"size", seg->end_ea - seg->start_ea}
+                }
+            }
         };
     }
 
@@ -313,12 +321,14 @@ namespace ida_mcp::tools::navigation {
 
         return json{
             {"current_address", format_ea(ea)},
-            {"next_segment", json{
-                {"name", seg_name.c_str()},
-                {"start", format_ea(seg->start_ea)},
-                {"end", format_ea(seg->end_ea)},
-                {"size", seg->end_ea - seg->start_ea}
-            }}
+            {
+                "next_segment", json{
+                    {"name", seg_name.c_str()},
+                    {"start", format_ea(seg->start_ea)},
+                    {"end", format_ea(seg->end_ea)},
+                    {"size", seg->end_ea - seg->start_ea}
+                }
+            }
         };
     }
 

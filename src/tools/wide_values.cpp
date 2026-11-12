@@ -1,9 +1,11 @@
 #include "tools/tools.hpp"
 
 extern "C" {
-    sval_t get_wide_value(ea_t ea);
-    void set_wide_value(ea_t ea, sval_t value);
-    void del_wide_value(ea_t ea);
+sval_t get_wide_value(ea_t ea);
+
+void set_wide_value(ea_t ea, sval_t value);
+
+void del_wide_value(ea_t ea);
 }
 
 namespace ida_mcp::tools::wide_values {
@@ -25,7 +27,7 @@ namespace ida_mcp::tools::wide_values {
             if (val != -1) {
                 result["value"] = static_cast<int64_t>(val);
                 char hex[32];
-                qsnprintf(hex, sizeof(hex), "0x%llX", (uint64)val);
+                qsnprintf(hex, sizeof(hex), "0x%llX", (uint64) val);
                 result["value_hex"] = hex;
             }
 
@@ -75,47 +77,48 @@ namespace ida_mcp::tools::wide_values {
         }
     }
 
-    void register_tools(mcp::McpServer &server) {
-        {
+    void register_tools(mcp::McpServer &server) { {
             mcp::ToolDefinition def;
             def.name = "get_wide_value";
             def.description = "Get the 64-bit wide value stored at an address in the IDA database. "
-                "Returns -1 if no value is set.";
+                    "Returns -1 if no value is set.";
             def.input_schema = json{
                 {"type", "object"},
-                {"properties", {
-                    {"address", {{"type", "string"}, {"description", "Hex address"}}}
-                }},
+                {
+                    "properties", {
+                        {"address", {{"type", "string"}, {"description", "Hex address"}}}
+                    }
+                },
                 {"required", json::array({"address"})}
             };
             server.register_tool(def, get_wide_value_impl);
-        }
-
-        {
+        } {
             mcp::ToolDefinition def;
             def.name = "set_wide_value";
             def.description = "Set a 64-bit wide value at an address in the IDA database. "
-                "Accepts integer or hex string values.";
+                    "Accepts integer or hex string values.";
             def.input_schema = json{
                 {"type", "object"},
-                {"properties", {
-                    {"address", {{"type", "string"}, {"description", "Hex address"}}},
-                    {"value", {{"description", "Value to store (integer or hex string)"}}}
-                }},
+                {
+                    "properties", {
+                        {"address", {{"type", "string"}, {"description", "Hex address"}}},
+                        {"value", {{"description", "Value to store (integer or hex string)"}}}
+                    }
+                },
                 {"required", json::array({"address", "value"})}
             };
             server.register_tool(def, set_wide_value_impl);
-        }
-
-        {
+        } {
             mcp::ToolDefinition def;
             def.name = "del_wide_value";
             def.description = "Delete the wide value at an address";
             def.input_schema = json{
                 {"type", "object"},
-                {"properties", {
-                    {"address", {{"type", "string"}, {"description", "Hex address"}}}
-                }},
+                {
+                    "properties", {
+                        {"address", {{"type", "string"}, {"description", "Hex address"}}}
+                    }
+                },
                 {"required", json::array({"address"})}
             };
             server.register_tool(def, del_wide_value_impl);

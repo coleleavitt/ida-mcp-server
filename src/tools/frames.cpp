@@ -56,8 +56,15 @@ namespace ida_mcp::tools::frames {
 
             // Get register variables
             json regvars = json::array();
-            regvar_t *rv = find_regvar(func, BADADDR, BADADDR, nullptr, nullptr);
-            while (rv != nullptr) {
+            ea_t search_start = func->start_ea;
+            constexpr size_t MAX_REGVARS = 100;  // Safety limit
+
+            while (regvars.size() < MAX_REGVARS) {
+                regvar_t *rv = find_regvar(func, search_start, func->end_ea, nullptr, nullptr);
+                if (rv == nullptr) {
+                    break;  // No more regvars found
+                }
+
                 json regvar_info = json::object();
                 regvar_info["range_start"] = format_ea(rv->start_ea);
                 regvar_info["range_end"] = format_ea(rv->end_ea);
@@ -74,11 +81,11 @@ namespace ida_mcp::tools::frames {
 
                 regvars.push_back(regvar_info);
 
-                // Find next register variable
-                rv = find_regvar(func, rv->end_ea, BADADDR, nullptr, nullptr);
-                if (rv != nullptr && rv->start_ea < rv->end_ea) {
-                    break; // Prevent infinite loop
+                // Move search start past this regvar to find the next one
+                if (rv->end_ea <= search_start) {
+                    break;  // Safety: prevent infinite loop if end_ea doesn't advance
                 }
+                search_start = rv->end_ea;
             }
 
             json result = json{

@@ -69,9 +69,9 @@ namespace ida_mcp::tools::comments {
                 name_str = buf;
             }
 
-            // Get comment at function start
+            // Get function comment using IDA SDK's function comment API
             qstring comment;
-            get_cmt(&comment, func->start_ea, repeatable);
+            ::get_func_cmt(&comment, func, repeatable);
 
             return json{
                 {"query_address", format_ea(ea)},
@@ -108,8 +108,8 @@ namespace ida_mcp::tools::comments {
                 name_str = buf;
             }
 
-            // Set comment at function start
-            bool success = set_cmt(func->start_ea, comment.c_str(), repeatable);
+            // Set function comment using IDA SDK's function comment API
+            bool success = ::set_func_cmt(func, comment.c_str(), repeatable);
 
             return json{
                 {"query_address", format_ea(ea)},

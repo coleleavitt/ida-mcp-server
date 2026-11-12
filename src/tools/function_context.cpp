@@ -5,7 +5,9 @@
 #include <frame.hpp>
 #include <lines.hpp>
 #include <tryblks.hpp>
+#include <idp.hpp>
 #include <set>
+#include <string_view>
 
 namespace ida_mcp::tools::function_context {
     namespace {
@@ -195,26 +197,41 @@ namespace ida_mcp::tools::function_context {
                 };
             }
 
-            // Get decompilation if requested
             if (include_decompilation) {
-#ifdef WITH_HEXRAYS
-                // Check if processor is CLI/.NET - Hexrays cannot decompile managed code
-                qstring proc_name;
-                get_processor_name(&proc_name);
+#ifdef HAS_HEXRAYS
+                ida_mcp::tools::cpp_class_recovery::ensure_recovery_done();
 
-                if (proc_name == "cli") {
+                char proc_name_buf[16] = {};
+                get_idp_name(proc_name_buf, sizeof(proc_name_buf));
+                const bool is_cli = std::string_view{proc_name_buf} == "cli";
+
+                if (is_cli) {
                     context["decompilation"] = {
                         {"available", false},
-                        {"note", "Decompilation not supported for .NET/CLI binaries (IL bytecode, not native assembly)"},
-                        {"processor", proc_name.c_str()}
+                        {
+                            "note",
+                            "Decompilation not supported for .NET/CLI binaries (IL bytecode, not native assembly)"
+                        },
+                        {"processor", proc_name_buf}
+                    };
+                } else if (ida_mcp::is_go_pathological_func(func)) {
+                    context["decompilation"] = {
+                        {"available", false},
+                        {"note", "Skipped (Hex-Rays infinite-loop risk on Go go.shape types; IDA 9.3sp1 bug)"}
                     };
                 } else {
                     hexrays_failure_t hf;
                     cfuncptr_t cfunc = decompile(func, &hf, DECOMP_NO_WAIT);
 
                     if (cfunc != nullptr) {
+                        const strvec_t &sv = cfunc->get_pseudocode();
                         qstring pseudocode;
-                        cfunc->get_pseudocode(pseudocode);
+                        for (size_t i = 0; i < sv.size(); i++) {
+                            if (i > 0) pseudocode.append("\n");
+                            qstring clean_line;
+                            tag_remove(&clean_line, sv[i].line);
+                            pseudocode.append(clean_line);
+                        }
 
                         context["decompilation"] = {
                             {"available", true},
@@ -324,7 +341,6 @@ namespace ida_mcp::tools::function_context {
                             catch_blocks.push_back(catch_info);
                         }
                         tb_info["catch_blocks"] = catch_blocks;
-
                     } else if (tb.is_seh()) {
                         tb_info["type"] = "seh_exception";
                         const seh_t &seh = tb.seh();

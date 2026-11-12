@@ -11,8 +11,15 @@ namespace ida_mcp::mcp {
             req.jsonrpc = "2.0";
 
             if (j.contains("id")) {
-                if (j["id"].is_number_integer()) {
-                    req.id = j["id"].get<int64_t>();
+                // JSON-RPC 2.0: id MUST be a String, Number (incl. fractional), or Null.
+                const json &jid = j["id"];
+                if (jid.is_number() || jid.is_string() || jid.is_null()) {
+                    req.id = jid;
+                } else {
+                    // Present but of an invalid type (boolean/array/object): this is a
+                    // malformed request, not a notification. Reject so the caller emits
+                    // an INVALID_REQUEST error instead of silently dropping the id.
+                    return std::nullopt;
                 }
             }
 

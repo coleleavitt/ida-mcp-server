@@ -19,12 +19,22 @@ namespace ida_mcp::tools::names {
             bool is_public = !name.empty() && is_public_name(ea);
             bool is_weak = !name.empty() && is_weak_name(ea);
 
-            return json{
+            json result = {
                 {"address", format_ea(ea)},
                 {"name", name.empty() ? nullptr : json(name.c_str())},
                 {"is_public", is_public},
                 {"is_weak", is_weak}
             };
+
+            // IDA 9.4 no longer exports is_get_nlist_demangled_name_supported(),
+            // so use the public demangling path instead of the name-list internals.
+            if (!name.empty()) {
+                qstring demangled;
+                if (get_ea_name(&demangled, ea, GN_DEMANGLED) > 0 && demangled != name)
+                    result["demangled"] = demangled.c_str();
+            }
+
+            return result;
         }
 
         // Set the name at a specific address
@@ -91,9 +101,21 @@ namespace ida_mcp::tools::names {
                 }
             }
 
-            // Check if name is auto-generated
+            // Check if name is auto-generated (IDA-generated names)
             if (!is_auto_generated) {
-                is_auto_generated = (name.rfind("sub_", 0) == 0 || name.rfind("loc_", 0) == 0);
+                // IDA generates various auto-names with these prefixes
+                is_auto_generated = (name.rfind("sub_", 0) == 0 ||
+                                     name.rfind("loc_", 0) == 0 ||
+                                     name.rfind("off_", 0) == 0 ||
+                                     name.rfind("dword_", 0) == 0 ||
+                                     name.rfind("qword_", 0) == 0 ||
+                                     name.rfind("word_", 0) == 0 ||
+                                     name.rfind("byte_", 0) == 0 ||
+                                     name.rfind("unk_", 0) == 0 ||
+                                     name.rfind("stru_", 0) == 0 ||
+                                     name.rfind("asc_", 0) == 0 ||
+                                     name.rfind("flt_", 0) == 0 ||
+                                     name.rfind("dbl_", 0) == 0);
             }
 
             return json{

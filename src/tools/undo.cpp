@@ -43,50 +43,43 @@ namespace ida_mcp::tools::undo {
         }
     }
 
-    void register_tools(mcp::McpServer &server) {
-        {
+    void register_tools(mcp::McpServer &server) { {
             mcp::ToolDefinition def;
             def.name = "create_undo_point";
             def.description = "Create an undo checkpoint before making changes";
             def.input_schema = json{
                 {"type", "object"},
-                {"properties", {}},
+                {"properties", json::object()},
                 {"required", json::array()}
             };
             server.register_tool(def, create_undo_point_impl);
-        }
-
-        {
+        } {
             mcp::ToolDefinition def;
             def.name = "perform_undo";
             def.description = "Undo the last operation";
             def.input_schema = json{
                 {"type", "object"},
-                {"properties", {}},
+                {"properties", json::object()},
                 {"required", json::array()}
             };
             server.register_tool(def, perform_undo_impl);
-        }
-
-        {
+        } {
             mcp::ToolDefinition def;
             def.name = "perform_redo";
             def.description = "Redo the last undone operation";
             def.input_schema = json{
                 {"type", "object"},
-                {"properties", {}},
+                {"properties", json::object()},
                 {"required", json::array()}
             };
             server.register_tool(def, perform_redo_impl);
-        }
-
-        {
+        } {
             mcp::ToolDefinition def;
             def.name = "get_undo_label";
             def.description = "Get labels for available undo/redo actions";
             def.input_schema = json{
                 {"type", "object"},
-                {"properties", {}},
+                {"properties", json::object()},
                 {"required", json::array()}
             };
             server.register_tool(def, get_undo_label_impl);

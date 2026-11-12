@@ -4,6 +4,47 @@
 
 namespace ida_mcp::tools::exec_scripts {
     namespace {
+        json idc_value_to_json(const idc_value_t &v);
+
+        std::string python_literal(const std::string &value) {
+            return json(value).dump();
+        }
+
+        json parse_python_json_result(extlang_object_t python, const char *name,
+                                      qstring *errbuf) {
+            idc_value_t result;
+            if (!python->eval_expr(&result, BADADDR, name, errbuf)) {
+                return json{
+                    {"success", false},
+                    {"isError", true},
+                    {"error", errbuf->c_str()},
+                    {"language", "python"}
+                };
+            }
+
+            if (result.vtype != VT_STR) {
+                return json{
+                    {"success", false},
+                    {"isError", true},
+                    {"error", "IDAPython result bridge did not return a string"},
+                    {"result", idc_value_to_json(result)},
+                    {"language", "python"}
+                };
+            }
+
+            try {
+                return json::parse(result.c_str());
+            } catch (const json::parse_error &e) {
+                return json{
+                    {"success", false},
+                    {"isError", true},
+                    {"error", std::string("Failed to parse IDAPython result bridge JSON: ") + e.what()},
+                    {"raw", result.c_str()},
+                    {"language", "python"}
+                };
+            }
+        }
+
         // Helper to convert idc_value_t to JSON
         json idc_value_to_json(const idc_value_t &v) {
             switch (v.vtype) {
@@ -43,7 +84,9 @@ namespace ida_mcp::tools::exec_scripts {
             }
         }
 
-        // Evaluate expression using current language (Python/IDC)
+        // Evaluate expression using IDC interpreter
+        // Note: Despite the generic name, this uses eval_idc_expr which only supports IDC.
+        // For Python support, use IDAPython's run_python_statement() via a separate tool.
         json handle_eval_expr(const json &params) {
             std::string expression = params["expression"].get<std::string>();
             ea_t ea = BADADDR;
@@ -58,7 +101,7 @@ namespace ida_mcp::tools::exec_scripts {
                 }
             }
 
-            // Evaluate the expression
+            // Evaluate the expression using IDC interpreter
             idc_value_t result;
             qstring err_msg;
 
@@ -68,43 +111,8 @@ namespace ida_mcp::tools::exec_scripts {
                 return json{
                     {"success", false},
                     {"error", err_msg.c_str()},
-                    {"expression", expression}
-                };
-            }
-
-            return json{
-                {"success", true},
-                {"expression", expression},
-                {"result", idc_value_to_json(result)}
-            };
-        }
-
-        // Evaluate IDC expression (forces IDC)
-        json handle_eval_idc(const json &params) {
-            std::string expression = params["expression"].get<std::string>();
-            ea_t ea = BADADDR;
-
-            if (params.contains("address") && !params["address"].is_null()) {
-                std::string addr_str = params["address"].get<std::string>();
-                if (addr_str != "0") {
-                    auto addr_opt = parse_ea(addr_str);
-                    if (addr_opt.has_value()) {
-                        ea = addr_opt.value();
-                    }
-                }
-            }
-
-            // Evaluate as IDC expression
-            idc_value_t result;
-            qstring err_msg;
-
-            bool success = eval_idc_expr(&result, ea, expression.c_str(), &err_msg);
-
-            if (!success) {
-                return json{
-                    {"success", false},
-                    {"error", err_msg.c_str()},
-                    {"expression", expression}
+                    {"expression", expression},
+                    {"language", "idc"}
                 };
             }
 
@@ -114,6 +122,12 @@ namespace ida_mcp::tools::exec_scripts {
                 {"result", idc_value_to_json(result)},
                 {"language", "idc"}
             };
+        }
+
+        // Alias for handle_eval_expr - kept for API compatibility
+        // Both tools use the same IDC interpreter underneath
+        json handle_eval_idc(const json &params) {
+            return handle_eval_expr(params);
         }
 
         // Execute IDC code snippet
@@ -206,6 +220,124 @@ namespace ida_mcp::tools::exec_scripts {
                 {"result", idc_value_to_json(result)}
             };
         }
+        json handle_run_python(const json &params) {
+            std::string code = params["code"].get<std::string>();
+
+            extlang_object_t python = find_extlang_by_name("Python");
+            if (python == nullptr)
+                throw std::runtime_error("Python extlang not available (IDAPython not loaded)");
+
+            std::string wrapped =
+                "import io as __ida_mcp_io, json as __ida_mcp_json, sys as __ida_mcp_sys, traceback as __ida_mcp_traceback\n"
+                "__ida_mcp_stdout = __ida_mcp_io.StringIO()\n"
+                "__ida_mcp_stderr = __ida_mcp_io.StringIO()\n"
+                "__ida_mcp_old_stdout = __ida_mcp_sys.stdout\n"
+                "__ida_mcp_old_stderr = __ida_mcp_sys.stderr\n"
+                "__ida_mcp_success = True\n"
+                "__ida_mcp_error = None\n"
+                "try:\n"
+                "    __ida_mcp_sys.stdout = __ida_mcp_stdout\n"
+                "    __ida_mcp_sys.stderr = __ida_mcp_stderr\n"
+                "    exec(" + python_literal(code) + ", globals(), globals())\n"
+                "except BaseException:\n"
+                "    __ida_mcp_success = False\n"
+                "    __ida_mcp_error = __ida_mcp_traceback.format_exc()\n"
+                "finally:\n"
+                "    __ida_mcp_sys.stdout = __ida_mcp_old_stdout\n"
+                "    __ida_mcp_sys.stderr = __ida_mcp_old_stderr\n"
+                "__ida_mcp_last_result = __ida_mcp_json.dumps({\n"
+                "    'success': __ida_mcp_success,\n"
+                "    'isError': not __ida_mcp_success,\n"
+                "    'stdout': __ida_mcp_stdout.getvalue(),\n"
+                "    'stderr': __ida_mcp_stderr.getvalue(),\n"
+                "    'error': __ida_mcp_error,\n"
+                "    'code': " + python_literal(code) + ",\n"
+                "    'language': 'python'\n"
+                "})\n";
+
+            qstring errbuf;
+            bool ok = python->eval_snippet(wrapped.c_str(), &errbuf);
+
+            if (!ok) {
+                return json{
+                    {"success", false},
+                    {"isError", true},
+                    {"error", errbuf.c_str()},
+                    {"code", code},
+                    {"language", "python"}
+                };
+            }
+
+            return parse_python_json_result(python, "__ida_mcp_last_result", &errbuf);
+        }
+
+        json handle_run_python_expr(const json &params) {
+            std::string expression = params["expression"].get<std::string>();
+
+            extlang_object_t python = find_extlang_by_name("Python");
+            if (python == nullptr)
+                throw std::runtime_error("Python extlang not available (IDAPython not loaded)");
+
+            std::string wrapped =
+                "import io as __ida_mcp_io, json as __ida_mcp_json, sys as __ida_mcp_sys, traceback as __ida_mcp_traceback\n"
+                "__ida_mcp_stdout = __ida_mcp_io.StringIO()\n"
+                "__ida_mcp_stderr = __ida_mcp_io.StringIO()\n"
+                "__ida_mcp_old_stdout = __ida_mcp_sys.stdout\n"
+                "__ida_mcp_old_stderr = __ida_mcp_sys.stderr\n"
+                "__ida_mcp_success = True\n"
+                "__ida_mcp_error = None\n"
+                "__ida_mcp_value = None\n"
+                "__ida_mcp_value_json = None\n"
+                "__ida_mcp_value_repr = None\n"
+                "__ida_mcp_value_type = None\n"
+                "try:\n"
+                "    __ida_mcp_sys.stdout = __ida_mcp_stdout\n"
+                "    __ida_mcp_sys.stderr = __ida_mcp_stderr\n"
+                "    __ida_mcp_value = eval(" + python_literal(expression) + ", globals(), globals())\n"
+                "    __ida_mcp_value_type = type(__ida_mcp_value).__name__\n"
+                "    __ida_mcp_value_repr = repr(__ida_mcp_value)\n"
+                "    try:\n"
+                "        __ida_mcp_value_json = __ida_mcp_value\n"
+                "        __ida_mcp_json.dumps(__ida_mcp_value_json)\n"
+                "    except TypeError:\n"
+                "        __ida_mcp_value_json = None\n"
+                "except BaseException:\n"
+                "    __ida_mcp_success = False\n"
+                "    __ida_mcp_error = __ida_mcp_traceback.format_exc()\n"
+                "finally:\n"
+                "    __ida_mcp_sys.stdout = __ida_mcp_old_stdout\n"
+                "    __ida_mcp_sys.stderr = __ida_mcp_old_stderr\n"
+                "__ida_mcp_last_expr_result = __ida_mcp_json.dumps({\n"
+                "    'success': __ida_mcp_success,\n"
+                "    'isError': not __ida_mcp_success,\n"
+                "    'stdout': __ida_mcp_stdout.getvalue(),\n"
+                "    'stderr': __ida_mcp_stderr.getvalue(),\n"
+                "    'error': __ida_mcp_error,\n"
+                "    'expression': " + python_literal(expression) + ",\n"
+                "    'result': {\n"
+                "        'type': __ida_mcp_value_type,\n"
+                "        'repr': __ida_mcp_value_repr,\n"
+                "        'value': __ida_mcp_value_json\n"
+                "    },\n"
+                "    'language': 'python'\n"
+                "})\n";
+
+            qstring errbuf;
+            bool ok = python->eval_snippet(wrapped.c_str(), &errbuf);
+
+            if (!ok) {
+                return json{
+                    {"success", false},
+                    {"isError", true},
+                    {"error", errbuf.c_str()},
+                    {"expression", expression},
+                    {"language", "python"}
+                };
+            }
+
+            return parse_python_json_result(python, "__ida_mcp_last_expr_result", &errbuf);
+        }
+
     } // anonymous namespace
 
     void register_tools(mcp::McpServer &server) {
@@ -316,6 +448,40 @@ namespace ida_mcp::tools::exec_scripts {
                 {"required", json::array({"code"})}
             };
             server.register_tool(def, handle_compile_idc);
+        }
+
+        // run_python
+        {
+            mcp::ToolDefinition def;
+            def.name = "run_python";
+            def.description =
+                "Execute Python code via IDAPython. Has full access to ida_*, idautils, idc, "
+                "ida_hexrays, ida_nalt, etc. Use print() to return output.";
+            def.input_schema = json{
+                {"type", "object"},
+                {"properties", {
+                    {"code", {{"type", "string"}, {"description", "Python code to execute"}}}
+                }},
+                {"required", json::array({"code"})}
+            };
+            server.register_tool(def, handle_run_python);
+        }
+
+        // run_python_expr
+        {
+            mcp::ToolDefinition def;
+            def.name = "run_python_expr";
+            def.description =
+                "Evaluate a Python expression and return the result. "
+                "For statements/multi-line code, use run_python instead.";
+            def.input_schema = json{
+                {"type", "object"},
+                {"properties", {
+                    {"expression", {{"type", "string"}, {"description", "Python expression"}}}
+                }},
+                {"required", json::array({"expression"})}
+            };
+            server.register_tool(def, handle_run_python_expr);
         }
 
         // call_idc_func

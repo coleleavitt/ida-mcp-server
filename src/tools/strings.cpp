@@ -4,6 +4,24 @@
 #include <xref.hpp>
 
 namespace ida_mcp::tools::strings {
+    namespace {
+        json provider_json(uchar id) {
+            const char *name = synth_string_provider_name(id);
+            return json{{"id", id}, {"name", name != nullptr ? json(name) : json(nullptr)}};
+        }
+
+        std::optional<ea_t> optional_ea(const json &params, const char *key) {
+            if (!params.contains(key))
+                return std::nullopt;
+            if (!params[key].is_string())
+                throw std::runtime_error(std::string(key) + " must be a hex address string");
+            auto ea = parse_ea(params[key].get<std::string>());
+            if (!ea)
+                throw std::runtime_error(std::string("Invalid address in ") + key);
+            return ea;
+        }
+    }
+
     // List and search strings in the binary
     static json list_strings(const json &params) {
         std::string query = params.value("query", "");
@@ -11,35 +29,36 @@ namespace ida_mcp::tools::strings {
         limit = std::min(limit, 1000); // Cap at 1000
         bool case_sensitive = params.value("case_sensitive", false);
 
-        // Check if string list exists, build if needed
+        // Check binary size FIRST - before touching string list APIs
+        // Large binaries can cause heap corruption when string list isn't built
+        size_t func_count = get_func_qty();
+        
+        // Safe to query string list now (but check the count)
         size_t total_strings = get_strlist_qty();
-
-        if (total_strings == 0) {
-            // Check binary size before auto-building
-            size_t func_count = get_func_qty();
-
-            if (func_count > 50000) {
-                // Binary too large - refuse to auto-build
-                return json{
-                    {"count", 0},
-                    {"query", query.empty() ? nullptr : json(query)},
-                    {"strings", json::array()},
-                    {
-                        "note", "String list is empty. Binary is very large (" + std::to_string(func_count) +
-                                " functions). Please build string list manually in IDA: View → Strings (Shift+F12)"
-                    },
-                    {
-                        "diagnostic", {
-                            {"function_count", func_count},
-                            {"strlist_qty", 0},
-                            {"requires_manual_build", true},
-                            {"is_large_binary", true}
-                        }
+        
+        // Refuse to iterate if too many strings - can cause crashes on complex binaries
+        if (total_strings > 100000) {
+            return json{
+                {"count", 0},
+                {"query", query.empty() ? nullptr : json(query)},
+                {"strings", json::array()},
+                {
+                    "note", "String list is very large (" + std::to_string(total_strings) +
+                            " strings). Operations disabled to prevent crashes. "
+                            "Use get_string_at with specific addresses instead."
+                },
+                {
+                    "diagnostic", {
+                        {"function_count", func_count},
+                        {"string_count", total_strings},
+                        {"is_large_binary", true}
                     }
-                };
-            }
+                }
+            };
+        }
 
-            // Small binary - safe to build
+        if (total_strings == 0 && func_count < 50000) {
+            // Small binary with no strings - safe to build
             build_strlist();
             total_strings = get_strlist_qty();
 
@@ -49,6 +68,16 @@ namespace ida_mcp::tools::strings {
                     {"query", query.empty() ? nullptr : json(query)},
                     {"strings", json::array()},
                     {"note", "String list is empty after build. Database may not contain strings."}
+                };
+            }
+            
+            // Re-check after build
+            if (total_strings > 100000) {
+                return json{
+                    {"count", 0},
+                    {"query", query.empty() ? nullptr : json(query)},
+                    {"strings", json::array()},
+                    {"note", "String list too large after build (" + std::to_string(total_strings) + " strings)."}
                 };
             }
         }
@@ -65,20 +94,26 @@ namespace ida_mcp::tools::strings {
                                        }();
 
         for (size_t i = 0; i < total_strings && string_list.size() < (size_t) limit; i++) {
-            string_info_t si;
-            if (!get_strlist_item(&si, i)) {
+            string_info_ex_t si;
+            if (!get_strlist_item_ex(&si, i)) {
                 continue;
             }
 
             ea_t ea = si.ea;
             if (ea == BADADDR) continue;
 
-            // Get string content
-            qstring str_content;
-            ssize_t len = get_strlit_contents(&str_content, ea, -1, STRTYPE_C);
-            if (len <= 0) continue;
-
-            std::string content = str_content.c_str();
+            // A synthetic string (STRTYPE_SYNTH) is not in the bytes: the list
+            // carries its text.
+            const bool synthetic = is_synth_strtype(si.type);
+            std::string content;
+            if (synthetic) {
+                content = si.synthetic_string.c_str();
+            } else {
+                if (si.length == 0 || si.length > 0x100000) continue;  // Skip zero-length or absurdly long
+                qstring str_content;
+                if (get_strlit_contents(&str_content, ea, si.length, si.type) <= 0) continue;
+                content = str_content.c_str();
+            }
             if (content.empty()) continue;
 
             // Apply search filter
@@ -96,11 +131,16 @@ namespace ida_mcp::tools::strings {
                 if (!matches) continue;
             }
 
-            string_list.push_back(json{
+            json entry = {
                 {"address", format_ea(ea)},
                 {"content", content},
                 {"length", content.length()}
-            });
+            };
+            if (synthetic) {
+                entry["synthetic"] = true;
+                entry["provider"] = provider_json(get_synth_provider_id(si.type));
+            }
+            string_list.push_back(std::move(entry));
         }
 
         return json{
@@ -149,6 +189,42 @@ namespace ida_mcp::tools::strings {
             {"max_length", max_len},
             {"xref_count", xrefs.size()},
             {"xrefs", xrefs}
+        };
+    }
+
+    // Synthetic strings stored by providers (Hex-Rays, Swift, plugins); they
+    // are not in the bytes, and every provider's text at an address is listed.
+    static json list_synthetic_strings(const json &params) {
+        const ea_t start = optional_ea(params, "start").value_or(inf_get_min_ea());
+        const ea_t end = optional_ea(params, "end").value_or(inf_get_max_ea());
+        if (end <= start)
+            throw std::runtime_error("end must be greater than start");
+        const int64 offset = std::max<int64>(0, params.value("offset", int64(0)));
+        const int64 count = std::max<int64>(1, params.value("count", int64(100)));
+
+        synth_strings_t found;
+        synth_string_get_range(&found, start, end);
+        const auto total = static_cast<int64>(found.size());
+        const int64 stop = std::min(total, offset + count);
+
+        json items = json::array();
+        for (int64 i = offset; i < stop; ++i) {
+            const synth_string_t &ss = found[static_cast<size_t>(i)];
+            json flags = json::array();
+            if ((ss.flags & SYNTHSTR_NOCMT) != 0) flags.push_back("nocmt");
+            if ((ss.flags & SYNTHSTR_REPEATABLE) != 0) flags.push_back("repeatable");
+            items.push_back(json{
+                {"address", format_ea(ss.ea)},
+                {"content", ss.text.c_str()},
+                {"provider", provider_json(ss.provider)},
+                {"flags", flags}
+            });
+        }
+        return json{
+            {"total", total},
+            {"offset", offset},
+            {"strings", items},
+            {"next_offset", stop < total ? json(stop) : json(nullptr)}
         };
     }
 
@@ -208,6 +284,23 @@ namespace ida_mcp::tools::strings {
                 {"required", json::array({"address"})}
             };
             server.register_tool(def, get_string_at);
+        }
+
+        {
+            mcp::ToolDefinition def;
+            def.name = "list_synthetic_strings";
+            def.description = "List synthetic strings: text that providers (Hex-Rays, Swift, plugins) stored "
+                    "for addresses because it is not in the bytes, e.g. strings built from immediates";
+            def.input_schema = json{
+                {"type", "object"},
+                {"properties", {
+                    {"start", {{"type", "string"}, {"description", "Hex start (default: database start)"}}},
+                    {"end", {{"type", "string"}, {"description", "Hex end, exclusive (default: database end)"}}},
+                    {"offset", {{"type", "integer"}, {"minimum", 0}, {"default", 0}}},
+                    {"count", {{"type", "integer"}, {"minimum", 1}, {"default", 100}}}
+                }}
+            };
+            server.register_tool(def, list_synthetic_strings);
         }
     }
 } // namespace ida_mcp::tools::strings
